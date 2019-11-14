@@ -166,17 +166,11 @@ static void kpress(XEvent *);
 static void cmessage(XEvent *);
 static void resize(XEvent *);
 static void focus(XEvent *);
-static int mouseaction(XEvent *, uint);
-static void brelease(XEvent *);
-static void bpress(XEvent *);
-static void bmotion(XEvent *);
 static void propnotify(XEvent *);
 static void selnotify(XEvent *);
 static void selclear_(XEvent *);
 static void selrequest(XEvent *);
 static void setsel(char *, Time);
-static void mousesel(XEvent *, int);
-static void mousereport(XEvent *);
 static char *kmap(KeySym, uint);
 static int match(uint, uint);
 
@@ -192,9 +186,6 @@ static void (*handler[LASTEvent])(XEvent *) = {
 	[Expose] = expose,
 	[FocusIn] = focus,
 	[FocusOut] = focus,
-	[MotionNotify] = bmotion,
-	[ButtonPress] = bpress,
-	[ButtonRelease] = brelease,
 /*
  * Uncomment if you want the selection to disappear when you select something
  * different in another window.
@@ -339,138 +330,6 @@ evrow(XEvent *e)
 }
 
 void
-mousesel(XEvent *e, int done)
-{
-	int type, seltype = SEL_REGULAR;
-	uint state = e->xbutton.state & ~(Button1Mask | forcemousemod);
-
-	for (type = 1; type < LEN(selmasks); ++type) {
-		if (match(selmasks[type], state)) {
-			seltype = type;
-			break;
-		}
-	}
-	selextend(evcol(e), evrow(e), seltype, done);
-	if (done)
-		setsel(getsel(), e->xbutton.time);
-}
-
-void
-mousereport(XEvent *e)
-{
-	int len, x = evcol(e), y = evrow(e),
-	    button = e->xbutton.button, state = e->xbutton.state;
-	char buf[40];
-	static int ox, oy;
-
-	/* from urxvt */
-	if (e->xbutton.type == MotionNotify) {
-		if (x == ox && y == oy)
-			return;
-		if (!IS_SET(MODE_MOUSEMOTION) && !IS_SET(MODE_MOUSEMANY))
-			return;
-		/* MOUSE_MOTION: no reporting if no button is pressed */
-		if (IS_SET(MODE_MOUSEMOTION) && oldbutton == 3)
-			return;
-
-		button = oldbutton + 32;
-		ox = x;
-		oy = y;
-	} else {
-		if (!IS_SET(MODE_MOUSESGR) && e->xbutton.type == ButtonRelease) {
-			button = 3;
-		} else {
-			button -= Button1;
-			if (button >= 3)
-				button += 64 - 3;
-		}
-		if (e->xbutton.type == ButtonPress) {
-			oldbutton = button;
-			ox = x;
-			oy = y;
-		} else if (e->xbutton.type == ButtonRelease) {
-			oldbutton = 3;
-			/* MODE_MOUSEX10: no button release reporting */
-			if (IS_SET(MODE_MOUSEX10))
-				return;
-			if (button == 64 || button == 65)
-				return;
-		}
-	}
-
-	if (!IS_SET(MODE_MOUSEX10)) {
-		button += ((state & ShiftMask  ) ? 4  : 0)
-			+ ((state & Mod4Mask   ) ? 8  : 0)
-			+ ((state & ControlMask) ? 16 : 0);
-	}
-
-	if (IS_SET(MODE_MOUSESGR)) {
-		len = snprintf(buf, sizeof(buf), "\033[<%d;%d;%d%c",
-				button, x+1, y+1,
-				e->xbutton.type == ButtonRelease ? 'm' : 'M');
-	} else if (x < 223 && y < 223) {
-		len = snprintf(buf, sizeof(buf), "\033[M%c%c%c",
-				32+button, 32+x+1, 32+y+1);
-	} else {
-		return;
-	}
-
-	ttywrite(buf, len, 0);
-}
-
-int
-mouseaction(XEvent *e, uint release)
-{
-	MouseShortcut *ms;
-
-	for (ms = mshortcuts; ms < mshortcuts + LEN(mshortcuts); ms++) {
-		if (ms->release == release &&
-		    ms->button == e->xbutton.button &&
-		    (match(ms->mod, e->xbutton.state) ||  /* exact or forced */
-		     match(ms->mod, e->xbutton.state & ~forcemousemod))) {
-			ms->func(&(ms->arg));
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
-void
-bpress(XEvent *e)
-{
-	struct timespec now;
-	int snap;
-
-	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
-		mousereport(e);
-		return;
-	}
-
-	if (mouseaction(e, 0))
-		return;
-
-	if (e->xbutton.button == Button1) {
-		/*
-		 * If the user clicks below predefined timeouts specific
-		 * snapping behaviour is exposed.
-		 */
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		if (TIMEDIFF(now, xsel.tclick2) <= tripleclicktimeout) {
-			snap = SNAP_LINE;
-		} else if (TIMEDIFF(now, xsel.tclick1) <= doubleclicktimeout) {
-			snap = SNAP_WORD;
-		} else {
-			snap = 0;
-		}
-		xsel.tclick2 = xsel.tclick1;
-		xsel.tclick1 = now;
-
-		selstart(evcol(e), evrow(e), snap);
-	}
-}
-
-void
 propnotify(XEvent *e)
 {
 	XPropertyEvent *xpev;
@@ -554,11 +413,6 @@ selnotify(XEvent *e)
 			*repl++ = '\r';
 		}
 
-		if (IS_SET(MODE_BRCKTPASTE) && ofs == 0)
-			ttywrite("\033[200~", 6, 0);
-		ttywrite((char *)data, nitems * format / 8, 1);
-		if (IS_SET(MODE_BRCKTPASTE) && rem == 0)
-			ttywrite("\033[201~", 6, 0);
 		XFree(data);
 		/* number of 32-bit chunks returned */
 		ofs += nitems * format / 32;
@@ -662,31 +516,6 @@ xsetsel(char *str)
 }
 
 void
-brelease(XEvent *e)
-{
-	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
-		mousereport(e);
-		return;
-	}
-
-	if (mouseaction(e, 1))
-		return;
-	if (e->xbutton.button == Button1)
-		mousesel(e, 1);
-}
-
-void
-bmotion(XEvent *e)
-{
-	if (IS_SET(MODE_MOUSE) && !(e->xbutton.state & forcemousemod)) {
-		mousereport(e);
-		return;
-	}
-
-	mousesel(e, 0);
-}
-
-void
 cresize(int width, int height)
 {
 	int col, row;
@@ -703,7 +532,6 @@ cresize(int width, int height)
 
 	tresize(col, row);
 	xresize(col, row);
-	ttyresize(win.tw, win.th);
 }
 
 void
@@ -734,19 +562,9 @@ xloadcolor(int i, const char *name, Color *ncolor)
 	XRenderColor color = { .alpha = 0xffff };
 
 	if (!name) {
-		if (BETWEEN(i, 16, 255)) { /* 256 color */
-			if (i < 6*6*6+16) { /* same colors as xterm */
-				color.red   = sixd_to_16bit( ((i-16)/36)%6 );
-				color.green = sixd_to_16bit( ((i-16)/6) %6 );
-				color.blue  = sixd_to_16bit( ((i-16)/1) %6 );
-			} else { /* greyscale */
-				color.red = 0x0808 + 0x0a0a * (i - (6*6*6+16));
-				color.green = color.blue = color.red;
-			}
-			return XftColorAllocValue(xw.dpy, xw.vis,
-			                          xw.cmap, &color, ncolor);
-		} else
-			name = colorname[i];
+		color.red = color.blue = color.green = i * 0xffff;
+		return XftColorAllocValue(xw.dpy, xw.vis,
+		                          xw.cmap, &color, ncolor);
 	}
 
 	return XftColorAllocName(xw.dpy, xw.vis, xw.cmap, name, ncolor);
@@ -763,16 +581,13 @@ xloadcols(void)
 		for (cp = dc.col; cp < &dc.col[dc.collen]; ++cp)
 			XftColorFree(xw.dpy, xw.vis, xw.cmap, cp);
 	} else {
-		dc.collen = MAX(LEN(colorname), 256);
+		dc.collen = 2;
 		dc.col = xmalloc(dc.collen * sizeof(Color));
 	}
 
 	for (i = 0; i < dc.collen; i++)
 		if (!xloadcolor(i, NULL, &dc.col[i])) {
-			if (colorname[i])
-				die("could not allocate color '%s'\n", colorname[i]);
-			else
-				die("could not allocate color %d\n", i);
+			die("could not allocate color %d\n", i);
 		}
 	loaded = 1;
 }
@@ -808,8 +623,8 @@ xclear(int x1, int y1, int x2, int y2)
 void
 xhints(void)
 {
-	XClassHint class = {opt_name ? opt_name : termname,
-	                    opt_class ? opt_class : termname};
+	XClassHint class = {"cdoedit",
+	                    "cdoedit"};
 	XWMHints wm = {.flags = InputHint, .input = 1};
 	XSizeHints *sizeh;
 
@@ -1129,17 +944,12 @@ xinit(int cols, int rows)
 	cursor = XCreateFontCursor(xw.dpy, mouseshape);
 	XDefineCursor(xw.dpy, xw.win, cursor);
 
-	if (XParseColor(xw.dpy, xw.cmap, colorname[mousefg], &xmousefg) == 0) {
-		xmousefg.red   = 0xffff;
-		xmousefg.green = 0xffff;
-		xmousefg.blue  = 0xffff;
-	}
-
-	if (XParseColor(xw.dpy, xw.cmap, colorname[mousebg], &xmousebg) == 0) {
-		xmousebg.red   = 0x0000;
-		xmousebg.green = 0x0000;
-		xmousebg.blue  = 0x0000;
-	}
+	xmousefg.red   = 0xffff;
+	xmousefg.green = 0xffff;
+	xmousefg.blue  = 0xffff;
+	xmousebg.red   = 0x0000;
+	xmousebg.green = 0x0000;
+	xmousebg.blue  = 0x0000;
 
 	XRecolorCursor(xw.dpy, cursor, &xmousefg, &xmousebg);
 
@@ -1685,13 +1495,9 @@ focus(XEvent *ev)
 		XSetICFocus(xw.xic);
 		win.mode |= MODE_FOCUSED;
 		xseturgency(0);
-		if (IS_SET(MODE_FOCUS))
-			ttywrite("\033[I", 3, 0);
 	} else {
 		XUnsetICFocus(xw.xic);
 		win.mode &= ~MODE_FOCUSED;
-		if (IS_SET(MODE_FOCUS))
-			ttywrite("\033[O", 3, 0);
 	}
 }
 
@@ -1699,43 +1505,6 @@ int
 match(uint mask, uint state)
 {
 	return mask == XK_ANY_MOD || mask == (state & ~ignoremod);
-}
-
-char*
-kmap(KeySym k, uint state)
-{
-	Key *kp;
-	int i;
-
-	/* Check for mapped keys out of X11 function keys. */
-	for (i = 0; i < LEN(mappedkeys); i++) {
-		if (mappedkeys[i] == k)
-			break;
-	}
-	if (i == LEN(mappedkeys)) {
-		if ((k & 0xFFFF) < 0xFD00)
-			return NULL;
-	}
-
-	for (kp = key; kp < key + LEN(key); kp++) {
-		if (kp->k != k)
-			continue;
-
-		if (!match(kp->mask, state))
-			continue;
-
-		if (IS_SET(MODE_APPKEYPAD) ? kp->appkey < 0 : kp->appkey > 0)
-			continue;
-		if (IS_SET(MODE_NUMLOCK) && kp->appkey == 2)
-			continue;
-
-		if (IS_SET(MODE_APPCURSOR) ? kp->appcursor < 0 : kp->appcursor > 0)
-			continue;
-
-		return kp->s;
-	}
-
-	return NULL;
 }
 
 void
@@ -1761,13 +1530,7 @@ kpress(XEvent *ev)
 		}
 	}
 
-	/* 2. custom keys from config.h */
-	if ((customkey = kmap(ksym, e->state))) {
-		ttywrite(customkey, strlen(customkey), 1);
-		return;
-	}
-
-	/* 3. composed string from input method */
+	/* 2. composed string from input method */
 	if (len == 0)
 		return;
 	if (len == 1 && e->state & Mod1Mask) {
@@ -1782,7 +1545,6 @@ kpress(XEvent *ev)
 			len = 2;
 		}
 	}
-	ttywrite(buf, len, 1);
 }
 
 void
@@ -1800,7 +1562,6 @@ cmessage(XEvent *e)
 			win.mode &= ~MODE_FOCUSED;
 		}
 	} else if (e->xclient.data.l[0] == xw.wmdeletewin) {
-		ttyhangup();
 		exit(0);
 	}
 }
@@ -1821,7 +1582,6 @@ run(void)
 	int w = win.w, h = win.h;
 	fd_set rfd;
 	int xfd = XConnectionNumber(xw.dpy), xev, blinkset = 0, dodraw = 0;
-	int ttyfd;
 	struct timespec drawtimeout, *tv = NULL, now, last, lastblink;
 	long deltatime;
 
@@ -1841,7 +1601,6 @@ run(void)
 		}
 	} while (ev.type != MapNotify);
 
-	ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
 	cresize(w, h);
 
 	clock_gettime(CLOCK_MONOTONIC, &last);
@@ -1849,25 +1608,15 @@ run(void)
 
 	for (xev = actionfps;;) {
 		FD_ZERO(&rfd);
-		FD_SET(ttyfd, &rfd);
 		FD_SET(xfd, &rfd);
 
-		if (pselect(MAX(xfd, ttyfd)+1, &rfd, NULL, NULL, tv, NULL) < 0) {
-			if (errno == EINTR)
-				continue;
-			die("select failed: %s\n", strerror(errno));
+		if (blinktimeout) {
+			if (!blinkset)
+				MODBIT(win.mode, 0, MODE_BLINK);
 		}
-		if (FD_ISSET(ttyfd, &rfd)) {
-			ttyread();
-			if (blinktimeout) {
-				blinkset = tattrset(ATTR_BLINK);
-				if (!blinkset)
-					MODBIT(win.mode, 0, MODE_BLINK);
-			}
-		}
+		
 
-		if (FD_ISSET(xfd, &rfd))
-			xev = actionfps;
+		xev = actionfps;
 
 		clock_gettime(CLOCK_MONOTONIC, &now);
 		drawtimeout.tv_sec = 0;
@@ -1876,7 +1625,6 @@ run(void)
 
 		dodraw = 0;
 		if (blinktimeout && TIMEDIFF(now, lastblink) > blinktimeout) {
-			tsetdirtattr(ATTR_BLINK);
 			win.mode ^= MODE_BLINK;
 			lastblink = now;
 			dodraw = 1;
@@ -1901,7 +1649,7 @@ run(void)
 
 			if (xev && !FD_ISSET(xfd, &rfd))
 				xev--;
-			if (!FD_ISSET(ttyfd, &rfd) && !FD_ISSET(xfd, &rfd)) {
+			if (!FD_ISSET(xfd, &rfd)) {
 				if (blinkset) {
 					if (TIMEDIFF(now, lastblink) \
 							> blinktimeout) {
@@ -1998,7 +1746,6 @@ run:
 	XSetLocaleModifiers("");
 	cols = MAX(cols, 1);
 	rows = MAX(rows, 1);
-	tnew(cols, rows);
 	xinit(cols, rows);
 	xsetenv();
 	selinit();
