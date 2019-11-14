@@ -9,7 +9,7 @@ static char *font = "Liberation Mono:pixelsize=12:antialias=true:autohint=true";
 static int borderpx = 2;
 
 /*
- * What program is execed by st depends of these precedence rules:
+ * What program is execed by cdoedit depends of these precedence rules:
  * 1: program passed with -e
  * 2: utmp option
  * 3: SHELL environment variable
@@ -41,7 +41,7 @@ static unsigned int tripleclicktimeout = 600;
 /* alt screens */
 int allowaltscreen = 1;
 
-/* frames per second st should at maximum draw to the screen */
+/* frames per second cdoedit should at maximum draw to the screen */
 static unsigned int xfps = 120;
 static unsigned int actionfps = 30;
 
@@ -63,14 +63,14 @@ static unsigned int cursorthickness = 2;
 static int bellvolume = 0;
 
 /* default TERM value */
-char *termname = "st-256color";
+char *termname = "cdoedit-256color";
 
 /*
  * spaces per tab
  *
  * When you are changing this value, don't forget to adapt the »it« value in
- * the st.info and appropriately install the st.info in the environment where
- * you use this st version.
+ * the cdoedit.info and appropriately install the cdoedit.info in the environment where
+ * you use this cdoedit version.
  *
  *	it#$tabspaces,
  *
@@ -189,7 +189,7 @@ static Shortcut shortcuts[] = {
 };
 
 /*
- * Special keys (change & recompile st.info accordingly)
+ * Special keys (change & recompile cdoedit.info accordingly)
  *
  * Mask value:
  * * Use XK_ANY_MOD to match the key no matter modifiers state
@@ -204,7 +204,7 @@ static Shortcut shortcuts[] = {
  * * > 0: cursor application mode enabled
  * * < 0: cursor application mode disabled
  *
- * Be careful with the order of the definitions because st searches in
+ * Be careful with the order of the definitions because cdoedit searches in
  * this table sequentially, so any XK_ANY_MOD must be in the last
  * position for a key.
  */

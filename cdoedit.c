@@ -17,7 +17,7 @@
 #include <unistd.h>
 #include <wchar.h>
 
-#include "st.h"
+#include "cdoedit.h"
 #include "win.h"
 
 #if   defined(__linux)
@@ -628,9 +628,9 @@ getsel(void)
 		 * Copy and pasting of line endings is inconsistent
 		 * in the inconsistent terminal and GUI world.
 		 * The best solution seems like to produce '\n' when
-		 * something is copied from st and convert '\n' to
+		 * something is copied from cdoedit and convert '\n' to
 		 * '\r', when something to be pasted is received by
-		 * st.
+		 * cdoedit.
 		 * FIXME: Fix the computer world.
 		 */
 		if ((y < sel.ne.y || lastx >= linelen) && !(last->mode & ATTR_WRAP))
@@ -2337,7 +2337,7 @@ tputc(Rune u)
 		if (strescseq.len+len >= strescseq.siz) {
 			/*
 			 * Here is a bug in terminals. If the user never sends
-			 * some code to stop the str or esc command, then st
+			 * some code to stop the str or esc command, then cdoedit
 			 * will stop responding. But this is better than
 			 * silently failing with unknown characters. At least
 			 * then users will report back.
