@@ -90,11 +90,6 @@ int tattrset(int);
 void tnew(int, int);
 void tresize(int, int);
 void tsetdirtattr(int);
-void ttyhangup(void);
-int ttynew(char *, char *, char *, char **);
-size_t ttyread(void);
-void ttyresize(int, int);
-void ttywrite(const char *, size_t, int);
 
 void resettitle(void);
 
@@ -113,7 +108,6 @@ char *xstrdup(char *);
 
 /* config.h globals */
 extern char *utmp;
-extern char *stty_args;
 extern char *vtiden;
 extern wchar_t *worddelimiters;
 extern int allowaltscreen;
