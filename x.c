@@ -1606,12 +1606,17 @@ run(void)
 		FD_ZERO(&rfd);
 		FD_SET(xfd, &rfd);
 
+		if (pselect(xfd+1, &rfd, NULL, NULL, tv, NULL) < 0) {
+			if (errno == EINTR)
+				continue;
+			die("select failed: %s\n", strerror(errno));
+		}
+		
 		if (blinktimeout) {
 			if (!blinkset)
 				MODBIT(win.mode, 0, MODE_BLINK);
 		}
 		
-
 		xev = actionfps;
 
 		clock_gettime(CLOCK_MONOTONIC, &now);
@@ -1702,6 +1707,7 @@ run:
 	XSetLocaleModifiers("");
 	cols = MAX(cols, 1);
 	rows = MAX(rows, 1);
+	tnew(cols, rows);
 	xinit(cols, rows);
 	xsetenv();
 	selinit();
