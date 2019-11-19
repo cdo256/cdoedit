@@ -1,6 +1,5 @@
 /cdoedit
 *.o
-/config.h
 *.save
 *.save.*
 *.out
