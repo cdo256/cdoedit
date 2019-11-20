@@ -17,7 +17,7 @@
 
 static char *argv0;
 #include "arg.h"
-#include "cdoedit.h"
+#include "editor.h"
 #include "win.h"
 
 /* types used in config.h */

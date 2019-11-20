@@ -4,7 +4,7 @@
 
 include config.mk
 
-SRC = cdoedit.c x.c
+SRC = cdoedit.c x.c editor.c
 OBJ = $(SRC:.c=.o)
 
 all: options cdoedit

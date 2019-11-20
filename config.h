@@ -106,7 +106,7 @@ static uint forcemousemod = ShiftMask;
  */
 static MouseShortcut mshortcuts[] = {
 	/* mask                 button   function        argument       release */
-	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },
+/*	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },*/
 };
 
 /* Internal keyboard shortcuts. */
@@ -125,18 +125,18 @@ static Shortcut shortcuts[] = {
 	{ CTRL,                 XK_V,           clippaste,      {.i =  0} },
 	{ CTRL,                 XK_Y,           selpaste,       {.i =  0} },
 	{ CTRL,                 XK_Num_Lock,    numlock,        {.i =  0} },
-	{ 0,                    XK_Enter,       newline,        {.i =  0} },
+	{ 0,                    XK_Return,      newline,        {.i =  0} },
 	{ 0,                    XK_BackSpace,   deletechar,     {.i = -1} },
 	{ 0,                    XK_Delete,      deletechar,     {.i = +1} },
-	{ CTRL,                 XK_Backspace,   deleteword,     {.i = -1} },
+	{ CTRL,                 XK_BackSpace,   deleteword,     {.i = -1} },
 	{ CTRL,                 XK_Delete,      deleteword,     {.i = +1} },
 
 	/* navigation */
 	/* mask                 keysym          function        argument */
 	{ NOSHIFT,              XK_Home,        navline,        {.i = -1} },
 	{ SHIFT,                XK_Home,        navline,        {.i = -2} },
-	{ NOSHFIT,              XK_End,         navline,        {.i = +1} },
-	{ OSHFIT,               XK_End,         navline,        {.i = +2} },
+	{ NOSHIFT,              XK_End,         navline,        {.i = +1} },
+	{ NOSHIFT,              XK_End,         navline,        {.i = +2} },
 	{ CTRL|NOSHIFT,         XK_Home,        navdocument,    {.i = -1} },
 	{ CTRL|SHIFT,           XK_Home,        navdocument,    {.i = -2} },
 	{ CTRL|SHIFT,           XK_End,         navdocument,    {.i = +1} },
@@ -164,8 +164,8 @@ static Shortcut shortcuts[] = {
 
 	/* other */
 	/* mask                 keysym          function        argument */
-	{ CTRL,                 XK_Plus,        zoom,           {.f = +1} },
-	{ CTRL,                 XK_Minus,       zoom,           {.f = -1} },
+	{ CTRL,                 XK_plus,        zoom,           {.f = +1} },
+	{ CTRL,                 XK_minus,       zoom,           {.f = -1} },
 };
 
 /*
