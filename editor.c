@@ -10,6 +10,7 @@
 #include "editor.h"
 
 #define MAX_LINE_LEN 1024
+#define MAX_UTF8_BYTES 6
 
 #define SIGN(a) ((a)>0 ? +1 : (a)<0 ? +1 : 0)
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
@@ -73,21 +74,37 @@ userwarning(const char *s, ...)
 }
 
 Rune
-readchar(const char *c)
+readchar(const char *c, /*out*/ const char **next)
 {
 	Rune r;
-	if (*c & 127) return *c;
+	if (*c & 127) {
+		r = *c;
+		*next = c+1;
+		return r;
+	}
 	/* *c can't be 0b11111111 as this value can never appear in utf-8 */
 	int bytecount = __builtin_clz(~*c & 255);
+	*next = c + bytecount;
 	r = (*c) & ((128>>bytecount) - 1);
 	while (bytecount > 1) r = (r << 6) | (*++c & 63);
 	return r;
 }
 
-bool
-iswhitespace(Rune c)
+char *
+writechar(char *pos, Rune r)
 {
-	return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+	if (r & 127) {
+		*pos = r;
+		return pos+1;
+	}
+	int bitcount = __builtin_clz(r);
+	int bytecount = (bitcount - 2) / 5;
+	for (int i = bytecount-1; i > 0; i--) {
+		pos[i] = 128 | (63 & r);
+		r >>= 6;
+	}
+	*pos = (~0U << (8 - bytecount)) | (r & ((1<<(7 - bytecount))-1));
+	return pos + bytecount;
 }
 
 bool
@@ -103,12 +120,143 @@ iswordboundry(Rune a, Rune b)
 bool
 disparagraphboundry(const Document *d, const char *pos, int dir)
 {
-	for (;; pos++) {
+	for (;;) {
 		if (pos == d->curleft) pos = d->curright;
-		if (pos == d->bufend || *pos == '\n') return true;
-		if (!isspace(readchar(pos))) return false;
+		if (pos == d->bufend) return true;
+		Rune r = readchar(pos, &pos);
+		if (r == '\n') return true;
+		if (!isspace(r)) return false;
 	}
-	return false;
+	return true;
+}
+
+int
+dgetcol(const Document *d, const char *pos)
+{
+	const char *q;
+	int col = 0;
+	if (pos > d->curright) {
+		q = memrchr(d->curright, '\n', pos - d->curright);
+		if (q) {
+			q++; /* start of next line */
+			goto walk;
+		}
+	}
+	q = memrchr(d->bufstart, '\n', d->curleft - d->bufstart);
+	if (!q) q = d->bufstart;
+	else q++;
+walk: 
+	for (;;) {
+		if (q == d->curleft) q = d->curright;
+		if (q == pos) return col;
+		Rune r = readchar(q, &q);
+		if (r == '\t') col = (col+7) & 7;
+		else if (isprint(r)) col++;
+	}
+}
+
+char *
+dgetposnearcol(const Document *d, const char *linestart, int col)
+{
+	int c = 0;
+	const char *pos = linestart;
+	while (c < col) {
+		if (pos == d->curleft) pos = d->curright;
+		if (pos == d->bufend) break;
+		Rune r = readchar(pos, &pos);
+		if (r == '\n') break;
+		else if (r == '\t') c = (c+7) & 7;
+		else if (isprint(r)) c++;
+	}
+	return (char *)pos;
+}
+
+char *
+dwalkrune(const Document *d, const char *pos, int change)
+{
+	/* assumes document is valid utf-8 and the cursor is on a character boundary */
+	if (change > 0) for (; change > 0; change--) {
+		if (pos == d->curleft) pos = d->curright;
+		if (pos == d->bufend) break;
+		if (!(*pos & 128))
+			pos += 1;
+		else if (!(*pos & 32))
+			pos += 2;
+		else if (!(*pos & 16))
+			pos += 3;
+		else if (!(*pos & 8))
+			pos += 4;
+		else if (!(*pos & 4))
+			pos += 5;
+		else
+			pos += 6;
+	}
+	else if (change < 0) for (; change < 0; change++) {
+		if (pos == d->curright) pos = d->curleft;
+		if (pos == d->bufstart) break;
+		pos--;
+		while ((*pos >> 6) == 2)
+			pos--;
+	}
+	return (char *)pos;
+}
+
+char *
+dwalkword(const Document *d, const char *pos, int change)
+{
+	const char *dmy;
+	int dir = SIGN(change); change *= dir;
+	Rune b = readchar(pos, &dmy);
+	while (change > 0) {
+		Rune a = b;
+		pos = dwalkrune(d, pos, dir);
+		b = readchar(pos, &dmy);
+		if (iswordboundry(a, b)) change--;
+	}
+	return (char *)pos;
+}
+
+char *
+dwalkrow(const Document *d, const char *pos, int change)
+{
+	const char *end = change > 0 ?
+		(pos < d->curleft ? d->curleft : d->bufend) :
+		(pos > d->curright ? d->curright : d->bufstart);
+	if (change > 0) {
+		while (change > 0) {
+			char *q = memchr(pos, '\n', end - pos);
+			if (q) {
+				pos = q + 1;
+				change--;
+			} else if (end < d->bufend) {
+				pos = d->curright;
+				end = d->bufend;
+			} else {
+				pos = NULL;
+				break;
+			}
+		}
+		if (pos) pos = dwalkrune(d, pos, +1); /* return the char after the '\n' */
+		else pos = end;
+	} else if (change <= 0) {
+		change++; /* walk n+1 '\n's to go back n lines */
+		while (change < 0) {
+			char *q = memrchr(end, '\n', pos - end);
+			if (q) {
+				pos = q;
+				change++;
+			} else if (end > d->bufstart) {
+				pos = d->curleft;
+				end = d->bufstart;
+			} else {
+				pos = NULL;
+				break;
+			}
+		}
+		if (pos) pos = dwalkrune(d, pos, +1); /* return the char after the '\n' */
+		else pos = end;
+	}
+	return (char *)pos;
 }
 
 ssize_t
@@ -127,6 +275,78 @@ dgrowgap(Document *d, size_t change)
 		d->curright += endshift;
 	}
 	return startshift;
+}
+
+
+void
+dnavigate(Document *d, char *pos, bool isselect)
+{
+	if (pos < d->curleft) {
+		size_t change = d->curleft - pos;
+		d->scrolldirty |= !!memchr(pos, '\n', change);
+		memmove(d->curright - change, pos, change);
+		d->curright -= change;
+		d->curleft -= change;
+		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
+			d->selanchor += d->curright - d->curleft;
+		}
+	} else if (pos > d->curright) {
+		size_t change = pos - d->curright;
+		d->scrolldirty |= !!memchr(d->curright, '\n', change);
+		memmove(d->curleft, d->curright, change);
+		d->curright += change;
+		d->curleft += change;
+		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
+			d->selanchor -= d->curright - d->curleft;
+		}
+	}
+	if (!isselect) d->selanchor = NULL;
+	d->coldirty = true; /* it's the caller's responsibility to correct this if moving vertically */
+}
+
+void
+ddeleterange(Document *d, char *left, char *right)
+{
+	char **toupdate[] = { &d->renderstart, &d->selanchor, NULL };
+	if (left <= d->curleft && d->curright <= right) {
+		if (left >= d->renderstart || right <= d->renderstart) d->scrolldirty = true;
+		for (char ***p = toupdate; *p; p++) {
+			if (left <= **p && **p < right) **p = left;
+		}
+		d->curleft = left;
+		d->curright = right;
+	} else if (right <= d->curleft) {
+		memmove(left, right, d->curleft - right);
+		for (char ***p = toupdate; *p; p++) {
+			if (left <= **p && **p < right) **p = left;
+			if (right < **p && **p <= d->curleft) **p -= right - left;
+		}
+		d->curleft -= right - left;
+	} else {
+		memmove(right - (left - d->curright), d->curright, left - d->curright);
+		for (char ***p = toupdate; *p; p++) {
+			if (left <= **p && **p <= right) **p = right;
+			if (d->curright <= **p && **p <= d->curleft) **p += right - left;
+		}
+		d->curright += right - left;
+	}
+	d->coldirty = true;
+}
+
+void
+ddeletesel(Document *d)
+{
+	if (d->selanchor < d->curleft)
+		ddeleterange(d, d->selanchor, d->curleft);
+	else
+		ddeleterange(d, d->curright, d->selanchor);
+}
+
+void
+dwrite(Document *d, Rune r)
+{
+	dgrowgap(d, MAX_UTF8_BYTES);
+	d->curleft = writechar(d->curleft, r);
 }
 
 void
@@ -159,23 +379,6 @@ changeindent(const Arg *arg)
 	selleft += (p - scratchbuf);
 }
 
-void ddeleterange(Document *d, char *left, char *right)
-{
-	if (left <= d->curleft && d->curright <= right) {
-		d->curleft = left;
-		d->curright = right;
-		if (left >= d->renderstart || right <= d->renderstart) d->scrolldirty = true;
-		dnavigate(d, d->curleft, false);
-	} else
-}
-
-void ddeletesel(Document *d)
-{
-	if (d->selanchor < d->curleft)
-		ddeleterange(d, d->selanchor, d->curleft);
-	else
-		ddeleterange(d, d->cur, d->selanchor);
-}
 
 void
 deletechar(const Arg *arg)
@@ -183,123 +386,22 @@ deletechar(const Arg *arg)
 	if (doc.selanchor) {
 		ddeletesel(&doc);
 	} else if (arg->i > 0) {
-		ddeleterange(&doc, doc.curright, dwalkrune(doc.curright, arg->i));
+		ddeleterange(&doc, doc.curright, dwalkrune(&doc, doc.curright, arg->i));
 	} else if (arg->i < 0) {
-		ddeleterange(&doc, dadvancerune(doc.curleft, arg->i), doc.curleft);
+		ddeleterange(&doc, dwalkrune(&doc, doc.curleft, arg->i), doc.curleft);
 	}
 }
 
 void
 deleteword(const Arg *arg)
 {
-	if (selleft && selright) {
+	if (doc.selanchor) {
 		ddeletesel(&doc);
 	} else if (arg->i > 0) {
 		ddeleterange(&doc, doc.curright, dwalkword(&doc, doc.curright, arg->i));
 	} else if (arg->i < 0) {
 		ddeleterange(&doc, dwalkword(&doc, doc.curleft, arg->i), doc.curleft);
 	}
-}
-
-void
-dnavigate(Document *d, char *pos, bool isselect)
-{
-	if (pos < d->curleft) {
-		size_t change = d->curleft - pos;
-		d->scrolldirty |= !!memchr(pos, '\n', change);
-		memmove(d->curright - change, pos, change);
-		d->curright -= change;
-		d->curleft -= change;
-		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
-			d->selanchor += d->curright - d->curleft;
-		}
-	} else if (pos > d->curright) {
-		size_t change = pos - d->curright;
-		d->scrolldirty |= !!memchr(d->curright, '\n', change);
-		memmove(d->curleft, d->curright, change);
-		d->curright += change;
-		d->curleft += change;
-		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
-			d->selanchor -= d->curright - d->curleft;
-		}
-	}
-	if (!isselect) d->selanchor = NULL;
-	d->coldirty = true; /* it's the caller's responsibility to correct this if moving vertically */
-}
-
-char *
-dwalkrune(const Document *d, char *pos, int change)
-{
-	/* assumes document is valid utf-8 and the cursor is on a character boundary */
-	if (charge > 0) for (; change > 0; change--) {
-		if (pos == d->curleft) pos = d->curright;
-		if (pos == d->bufend) break;
-		if (!(*pos & 128))
-			pos += 1;
-		else if (!(*pos & 32))
-			pos += 2;
-		else if (!(*pos & 16))
-			pos += 3;
-		else if (!(*pos & 8))
-			pos += 4;
-		else if (!(*pos & 4))
-			pos += 5;
-		else
-			pos += 6;
-	}
-	else if (charge < 0) for (; change < 0; change++) {
-		if (pos == d->curright) pos = d->curleft;
-		if (pos == d->bufstart) break;
-		pos--;
-		while ((*pos >> 6) == 2)
-			pos--;
-	}
-	return pos;
-}
-
-char *
-dwalkrow(const Document *d, char *pos, int change, bool keepcol)
-{
-	if (keepcol && d->coldirty) {
-		d->col = dgetcol(d, pos);
-		d->coldirty = false;
-	}
-	char *end = change > 0 ? d->curleft : d->curright;
-	if (change > 0) {
-		char *end = pos < d->curleft ? d->curleft : d->bufend;
-		while (change > 0) {
-			char *q = memchr(pos, '\n', end - pos);
-			if (q) {
-				pos = q + 1;
-				change--;
-			} else if (end < d->bufend) {
-				pos = d->curright;
-			} else {
-				pos = NULL;
-				break;
-			}
-		}
-		if (pos) pos = dwalkrune(d, pos, +1); /* return the char after the '\n' */
-		else pos = end;
-	} else if (change < 0) {
-		change++; /* walk n+1 '\n's to go back n lines */
-		char *end = pos > d->curright ? d->curright : d->bufstart;
-		while (change < 0) {
-			char *q = memrchr(end, '\n', pos - end);
-			if (q) {
-				change++;
-				pos = q;
-			} else if (end > d->bufstart) {
-				pos = d->curleft;
-			} else {
-				pos = NULL;
-				break;
-			}
-		}
-		if (pos) pos = dwalkrune(d, pos, +1); /* return the char after the '\n' */
-		else pos = end;
-	}
-	return keepcol ? dgetposnearcol(d, pos, col) : pos;
 }
 
 void
@@ -317,15 +419,18 @@ navdocument(const Arg *arg)
 void
 navline(const Arg *arg)
 {
-	char *pos = arg->i > 0 ? memchr(doc.curright, '\n', doc.bufend - doc.curright) : memrchr(doc.bufstart, '\n', doc.curleft - doc.bufstart);
+	char *pos = arg->i > 0 ?
+		memchr(doc.curright, '\n', doc.bufend - doc.curright) :
+		memrchr(doc.bufstart, '\n', doc.curleft - doc.bufstart);
 	if (pos == NULL) pos = arg->i > 0 ? doc.bufend : doc.bufstart;
 	dnavigate(&doc, pos, ISSELECT(arg->i));
 }
 void
 navpage(const Arg *arg)
 {
-	char *pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i)*20, true);
-	dnavigate(&doc, pos, ISSELECT(arg->i));
+	if (doc.coldirty) doc.col = dgetcol(&doc, doc.curleft);
+	char *pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i)*20);
+	dnavigate(&doc, dgetposnearcol(&doc, pos, doc.col), ISSELECT(arg->i));
 	doc.coldirty = false;
 }
 
@@ -334,25 +439,26 @@ navparagraph(const Arg *arg)
 {
 	char *pos = doc.curleft;
 	do {
-		pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i), false);
-	} while (!disparagraphbreak(&doc, q, SIGN(arg->i));
+		pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i));
+	} while (!disparagraphboundry(&doc, pos, SIGN(arg->i)));
 	dnavigate(&doc, pos, ISSELECT(arg->i));
 }
 void
 navrow(const Arg *arg)
 {
-	char *pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i)), true);
-	dnavigate(&doc, pos, ISSELECT(arg->i));
+	if (doc.coldirty) doc.col = dgetcol(&doc, doc.curleft);
+	char *pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i));
+	dnavigate(&doc, dgetposnearcol(&doc, pos, doc.col), ISSELECT(arg->i));
 	doc.coldirty = false;
 }
 void
 navword(const Arg *arg)
 {
-	char *pos = dwalkword(&document, doc.curleft, SIGN(arg->i));
-	dnavigate(&document, pos, ISSELCT(arg->i));
+	char *pos = dwalkword(&doc, doc.curleft, SIGN(arg->i));
+	dnavigate(&doc, pos, ISSELECT(arg->i));
 }
 void
 newline(const Arg *arg)
 {
-	dwrite(&document, '\n');
+	dwrite(&doc, '\n');
 }
