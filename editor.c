@@ -350,6 +350,12 @@ dwrite(Document *d, Rune r)
 }
 
 void
+write(Rune r)
+{
+	dwrite(&doc, r);
+}
+
+void
 changeindent(const Arg *arg)
 {
 	char *selleft = doc.selanchor ? MIN(doc.selanchor, doc.curleft) : doc.curleft;

@@ -241,6 +241,7 @@ static int oldbutton = 3; /* button event on startup: 3 = release */
 void
 clipcopy(const Arg *dummy)
 {
+	(void)dummy;
 	Atom clipboard;
 
 	free(xsel.clipboard);
@@ -256,6 +257,7 @@ clipcopy(const Arg *dummy)
 void
 clippaste(const Arg *dummy)
 {
+	(void)dummy;
 	Atom clipboard;
 
 	clipboard = XInternAtom(xw.dpy, "CLIPBOARD", 0);
@@ -266,6 +268,7 @@ clippaste(const Arg *dummy)
 void
 selpaste(const Arg *dummy)
 {
+	(void)dummy;
 	XConvertSelection(xw.dpy, XA_PRIMARY, xsel.xtarget, XA_PRIMARY,
 			xw.win, CurrentTime);
 }
@@ -273,6 +276,7 @@ selpaste(const Arg *dummy)
 void
 numlock(const Arg *dummy)
 {
+	(void)dummy;
 	win.mode ^= MODE_NUMLOCK;
 }
 
@@ -298,6 +302,7 @@ zoomabs(const Arg *arg)
 void
 zoomreset(const Arg *arg)
 {
+	(void)arg;
 	Arg larg;
 
 	if (defaultfontsize > 0) {
@@ -427,6 +432,7 @@ xclipcopy(void)
 void
 selclear_(XEvent *e)
 {
+	(void)e;
 	selclear();
 }
 
@@ -1500,8 +1506,6 @@ match(uint mask, uint state)
 	return mask == XK_ANY_MOD || mask == (state & ~ignoremod);
 }
 
-void tputc(Rune);
-
 void
 kpress(XEvent *ev)
 {
@@ -1540,7 +1544,7 @@ kpress(XEvent *ev)
 			len = 2;
 		}
 	}
-	tputc(buf[0]);
+	writechar(buf[0]);
 }
 
 void

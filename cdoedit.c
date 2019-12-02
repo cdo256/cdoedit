@@ -38,7 +38,7 @@
 
 /* macros */
 #define IS_SET(flag)		((term.mode & (flag)) != 0)
-#define ISCONTROLC0(c)		(BETWEEN(c, 0, 0x1f) || (c) == '\177')
+#define ISCONTROLC0(c)		(c <= 0x1f || (c) == '\177')
 #define ISCONTROLC1(c)		(BETWEEN(c, 0x80, 0x9f))
 #define ISCONTROL(c)		(ISCONTROLC0(c) || ISCONTROLC1(c))
 #define ISDELIM(u)		(u && wcschr(worddelimiters, u))
@@ -188,7 +188,6 @@ static void tsetdirt(int, int);
 static void tsetscroll(int, int);
 static void tswapscreen(void);
 static void tsetmode(int, int, int *, int);
-static int twrite(const char *, int, int);
 static void tfulldirt(void);
 static void tcontrolcode(uchar );
 static void tdectest(char );
@@ -220,7 +219,6 @@ static CSIEscape csiescseq;
 static STREscape strescseq;
 static int iofd = 1;
 static int cmdfd;
-static pid_t pid;
 
 static uchar utfbyte[UTF_SIZ + 1] = {0x80,    0, 0xC0, 0xE0, 0xF0};
 static uchar utfmask[UTF_SIZ + 1] = {0xC0, 0x80, 0xE0, 0xF0, 0xF8};
@@ -730,7 +728,7 @@ treset(void)
 	}, .x = 0, .y = 0, .state = CURSOR_DEFAULT};
 
 	memset(term.tabs, 0, term.col * sizeof(*term.tabs));
-	for (i = tabspaces; i < term.col; i += tabspaces)
+	for (i = tabspaces; i < (uint)term.col; i += tabspaces)
 		term.tabs[i] = 1;
 	term.top = 0;
 	term.bot = term.row - 1;
@@ -1034,7 +1032,7 @@ tdefcolor(int *attr, int *npar, int l)
 		g = attr[*npar + 3];
 		b = attr[*npar + 4];
 		*npar += 4;
-		if (!BETWEEN(r, 0, 255) || !BETWEEN(g, 0, 255) || !BETWEEN(b, 0, 255))
+		if (r > 255 || g > 255 || b > 255)
 			fprintf(stderr, "erresc: bad rgb color (%u,%u,%u)\n",
 				r, g, b);
 		else
@@ -1314,9 +1312,6 @@ tsetmode(int priv, int set, int *args, int narg)
 void
 csihandle(void)
 {
-	char buf[40];
-	int len;
-
 	switch (csiescseq.mode[0]) {
 	default:
 	unknown:
@@ -1480,10 +1475,6 @@ csihandle(void)
 		tsetattr(csiescseq.arg, csiescseq.narg);
 		break;
 	case 'n': /* DSR – Device Status Report (cursor position) */
-		if (csiescseq.arg[0] == 6) {
-			len = snprintf(buf, sizeof(buf),"\033[%i;%iR",
-					term.c.y+1, term.c.x+1);
-		}
 		break;
 	case 'r': /* DECSTBM -- Set Scrolling Region */
 		if (csiescseq.priv) {
@@ -1671,6 +1662,7 @@ strreset(void)
 void
 sendbreak(const Arg *arg)
 {
+	(void)arg;
 	if (tcsendbreak(cmdfd, 0))
 		perror("Error sending break");
 }
@@ -1688,18 +1680,21 @@ tprinter(char *s, size_t len)
 void
 toggleprinter(const Arg *arg)
 {
+	(void)arg;
 	term.mode ^= MODE_PRINT;
 }
 
 void
 printscreen(const Arg *arg)
 {
+	(void)arg;
 	tdump();
 }
 
 void
 printsel(const Arg *arg)
 {
+	(void)arg;
 	tdumpsel();
 }
 
@@ -1741,7 +1736,7 @@ tdump(void)
 void
 tputtab(int n)
 {
-	uint x = term.c.x;
+	int x = term.c.x;
 
 	if (n > 0) {
 		while (x < term.col && n--)
@@ -1752,7 +1747,7 @@ tputtab(int n)
 			for (--x; x > 0 && !term.tabs[x]; --x)
 				/* nothing */ ;
 	}
-	term.c.x = LIMIT(x, 0, term.col-1);
+	term.c.x = MIN(x, term.col-1);
 }
 
 void
@@ -1853,6 +1848,7 @@ tcontrolcode(uchar ascii)
 		return;
 	case '\032': /* SUB */
 		tsetchar('?', &term.c.attr, term.c.x, term.c.y);
+		/* fallthrough */
 	case '\030': /* CAN */
 		csireset();
 		break;
@@ -2143,38 +2139,6 @@ check_control_code:
 	} else {
 		term.c.state |= CURSOR_WRAPNEXT;
 	}
-}
-
-int
-twrite(const char *buf, int buflen, int show_ctrl)
-{
-	int charsize;
-	Rune u;
-	int n;
-
-	for (n = 0; n < buflen; n += charsize) {
-		if (IS_SET(MODE_UTF8) && !IS_SET(MODE_SIXEL)) {
-			/* process a complete utf8 char */
-			charsize = utf8decode(buf + n, &u, buflen - n);
-			if (charsize == 0)
-				break;
-		} else {
-			u = buf[n] & 0xFF;
-			charsize = 1;
-		}
-		if (show_ctrl && ISCONTROL(u)) {
-			if (u & 0x80) {
-				u &= 0x7f;
-				tputc('^');
-				tputc('[');
-			} else if (u != '\n' && u != '\r' && u != '\t') {
-				u ^= 0x40;
-				tputc('^');
-			}
-		}
-		tputc(u);
-	}
-	return n;
 }
 
 void

@@ -2,6 +2,8 @@
 
 #include "cdoedit.h"
 
+void writerune(Rune r);
+
 void changeindent(const Arg *);
 void deletechar(const Arg *);
 void deleteword(const Arg *);
