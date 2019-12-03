@@ -22,10 +22,6 @@ static float chscale = 1.0;
  */
 wchar_t *worddelimiters = L" ";
 
-/* selection timeouts (in milliseconds) */
-static unsigned int doubleclicktimeout = 300;
-static unsigned int tripleclicktimeout = 600;
-
 /* alt screens */
 int allowaltscreen = 1;
 
@@ -84,30 +80,12 @@ static unsigned int rows = 24;
  * Default colour and shape of the mouse cursor
  */
 static unsigned int mouseshape = XC_xterm;
-static unsigned int mousefg = 1;
-static unsigned int mousebg = 0;
 
 /*
  * Color used to display font attributes when fontconfig selected a font which
  * doesn't match the ones requested.
  */
 static unsigned int defaultattr = 1;
-
-/*
- * Force mouse select/shortcuts while mask is active (when MODE_MOUSE is set).
- * Note that if you want to use ShiftMask with selmasks, set this to an other
- * modifier, set to 0 to not use it.
- */
-static uint forcemousemod = ShiftMask;
-
-/*
- * Internal mouse shortcuts.
- * Beware that overloading Button1 will disable the selection.
- */
-static MouseShortcut mshortcuts[] = {
-	/* mask                 button   function        argument       release */
-/*	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },*/
-};
 
 /* Internal keyboard shortcuts. */
 #define META Mod1Mask
@@ -169,27 +147,10 @@ static Shortcut shortcuts[] = {
 };
 
 /*
- * If you want keys other than the X11 function keys (0xFD00 - 0xFFFF)
- * to be mapped below, add them to this array.
- */
-static KeySym mappedkeys[] = { -1 };
-
-/*
  * State bits to ignore when matching key or button events.  By default,
  * numlock (Mod2Mask) and keyboard layout (XK_SWITCH_MOD) are ignored.
  */
 static uint ignoremod = Mod2Mask|XK_SWITCH_MOD;
-
-/*
- * Selection types' masks.
- * Use the same masks as usual.
- * Button1Mask is always unset, to make masks match between ButtonPress.
- * ButtonRelease and MotionNotify.
- * If no match is found, regular selection is used.
- */
-static uint selmasks[] = {
-	[SEL_RECTANGULAR] = Mod1Mask,
-};
 
 /*
  * Printable characters in ASCII, used to estimate the advance width

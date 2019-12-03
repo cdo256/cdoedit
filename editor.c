@@ -62,6 +62,7 @@ grow(char **buf, size_t *len, size_t newlen)
 		*buf = newbuf;
 		return shift;
 	}
+	return 0;
 }
 
 void
@@ -118,7 +119,7 @@ iswordboundry(Rune a, Rune b)
 }
 
 bool
-disparagraphboundry(const Document *d, const char *pos, int dir)
+disparagraphboundry(const Document *d, const char *pos)
 {
 	for (;;) {
 		if (pos == d->curleft) pos = d->curright;
@@ -350,7 +351,7 @@ dwrite(Document *d, Rune r)
 }
 
 void
-write(Rune r)
+writerune(Rune r)
 {
 	dwrite(&doc, r);
 }
@@ -363,7 +364,7 @@ changeindent(const Arg *arg)
 	char *s;
 	size_t linecount = 1+memctchr(selleft, '\n', selright - selleft);
 	for (s = selleft; s > doc.bufstart && s[-1] != '\n'; s--);
-	size_t maxchange = MAX(linecount * arg->i, 0);
+	size_t maxchange = linecount * MAX(arg->i, 0);
 	size_t maxnewlen = maxchange + (selright-s);
 	grow(&scratchbuf, &scratchlen, maxnewlen);
 	ssize_t move = dgrowgap(&doc, maxchange);
@@ -446,7 +447,7 @@ navparagraph(const Arg *arg)
 	char *pos = doc.curleft;
 	do {
 		pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i));
-	} while (!disparagraphboundry(&doc, pos, SIGN(arg->i)));
+	} while (!disparagraphboundry(&doc, pos));
 	dnavigate(&doc, pos, ISSELECT(arg->i));
 }
 void
@@ -466,5 +467,6 @@ navword(const Arg *arg)
 void
 newline(const Arg *arg)
 {
+	(void)arg;
 	dwrite(&doc, '\n');
 }

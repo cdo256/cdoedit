@@ -155,8 +155,6 @@ static void xunloadfont(Font *);
 static void xunloadfonts(void);
 static void xsetenv(void);
 static void xseturgency(int);
-static int evcol(XEvent *);
-static int evrow(XEvent *);
 
 static void expose(XEvent *);
 static void visibility(XEvent *);
@@ -167,10 +165,8 @@ static void resize(XEvent *);
 static void focus(XEvent *);
 static void propnotify(XEvent *);
 static void selnotify(XEvent *);
-static void selclear_(XEvent *);
 static void selrequest(XEvent *);
 static void setsel(char *, Time);
-static char *kmap(KeySym, uint);
 static int match(uint, uint);
 
 static void run(void);
@@ -227,16 +223,11 @@ static char *usedfont = NULL;
 static double usedfontsize = 0;
 static double defaultfontsize = 0;
 
-static char *opt_class = NULL;
 static char **opt_cmd  = NULL;
 static char *opt_embed = NULL;
 static char *opt_font  = NULL;
-static char *opt_io    = NULL;
 static char *opt_line  = NULL;
-static char *opt_name  = NULL;
 static char *opt_title = NULL;
-
-static int oldbutton = 3; /* button event on startup: 3 = release */
 
 void
 clipcopy(const Arg *dummy)
@@ -309,22 +300,6 @@ zoomreset(const Arg *arg)
 		larg.f = defaultfontsize;
 		zoomabs(&larg);
 	}
-}
-
-int
-evcol(XEvent *e)
-{
-	int x = e->xbutton.x - borderpx;
-	LIMIT(x, 0, win.tw - 1);
-	return x / win.cw;
-}
-
-int
-evrow(XEvent *e)
-{
-	int y = e->xbutton.y - borderpx;
-	LIMIT(y, 0, win.th - 1);
-	return y / win.ch;
 }
 
 void
@@ -427,13 +402,6 @@ void
 xclipcopy(void)
 {
 	clipcopy(NULL);
-}
-
-void
-selclear_(XEvent *e)
-{
-	(void)e;
-	selclear();
 }
 
 void
@@ -584,7 +552,7 @@ xloadcols(void)
 		dc.col = xmalloc(dc.collen * sizeof(Color));
 	}
 
-	for (i = 0; i < dc.collen; i++)
+	for (i = 0; i < (int)dc.collen; i++)
 		if (!xloadcolor(i, NULL, &dc.col[i])) {
 			die("could not allocate color %d\n", i);
 		}
@@ -596,7 +564,7 @@ xsetcolorname(int x, const char *name)
 {
 	Color ncolor;
 
-	if (!BETWEEN(x, 0, dc.collen))
+	if (!BETWEEN(x, 0, (int)dc.collen))
 		return 1;
 
 	if (!xloadcolor(x, name, &ncolor))
@@ -838,6 +806,7 @@ xunloadfonts(void)
 void
 ximopen(Display *dpy)
 {
+	(void)dpy;
 	XIMCallback destroy = { .client_data = NULL, .callback = ximdestroy };
 
 	if ((xw.xim = XOpenIM(xw.dpy, NULL, NULL, NULL)) == NULL) {
@@ -859,6 +828,8 @@ ximopen(Display *dpy)
 void
 ximinstantiate(Display *dpy, XPointer client, XPointer call)
 {
+	(void)client;
+	(void)call;
 	ximopen(dpy);
 	XUnregisterIMInstantiateCallback(xw.dpy, NULL, NULL, NULL,
 					ximinstantiate, NULL);
@@ -867,6 +838,9 @@ ximinstantiate(Display *dpy, XPointer client, XPointer call)
 void
 ximdestroy(XIM xim, XPointer client, XPointer call)
 {
+	(void)xim;
+	(void)client;
+	(void)call;
 	xw.xim = NULL;
 	XRegisterIMInstantiateCallback(xw.dpy, NULL, NULL, NULL,
 					ximinstantiate, NULL);
@@ -1150,7 +1124,7 @@ xdrawglyphfontspecs(const XftGlyphFontSpec *specs, Glyph base, int len, int x, i
 	}
 
 	/* Change basic system colors [0-7] to bright system colors [8-15] */
-	if ((base.mode & ATTR_BOLD_FAINT) == ATTR_BOLD && BETWEEN(base.fg, 0, 7))
+	if ((base.mode & ATTR_BOLD_FAINT) == ATTR_BOLD && base.fg <= 7)
 		fg = &dc.col[base.fg + 8];
 
 	if (IS_SET(MODE_REVERSE)) {
@@ -1297,6 +1271,7 @@ xdrawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 		switch (win.cursor) {
 		case 7: /* cdoedit extension: snowman (U+2603) */
 			g.u = 0x2603;
+			/* fallthrough */
 		case 0: /* Blinking Block */
 		case 1: /* Blinking Block (Default) */
 		case 2: /* Steady Block */
@@ -1420,6 +1395,7 @@ xximspot(int x, int y)
 void
 expose(XEvent *ev)
 {
+	(void)ev;
 	redraw();
 }
 
@@ -1434,6 +1410,7 @@ visibility(XEvent *ev)
 void
 unmap(XEvent *ev)
 {
+	(void)ev;
 	win.mode &= ~MODE_VISIBLE;
 }
 
@@ -1511,7 +1488,7 @@ kpress(XEvent *ev)
 {
 	XKeyEvent *e = &ev->xkey;
 	KeySym ksym;
-	char buf[32], *customkey;
+	char buf[32];
 	int len;
 	Rune c;
 	Status status;
@@ -1544,7 +1521,7 @@ kpress(XEvent *ev)
 			len = 2;
 		}
 	}
-	writechar(buf[0]);
+	writerune(buf[0]);
 }
 
 void
@@ -1561,7 +1538,7 @@ cmessage(XEvent *e)
 		} else if (e->xclient.data.l[1] == XEMBED_FOCUS_OUT) {
 			win.mode &= ~MODE_FOCUSED;
 		}
-	} else if (e->xclient.data.l[0] == xw.wmdeletewin) {
+	} else if (e->xclient.data.l[0] == (long)xw.wmdeletewin) {
 		exit(0);
 	}
 }
@@ -1700,7 +1677,6 @@ main(int argc, char *argv[])
 		usage();
 	} ARGEND;
 
-run:
 	if (argc > 0) /* eat all remaining arguments */
 		opt_cmd = argv;
 
