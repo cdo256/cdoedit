@@ -210,6 +210,8 @@ dwalkword(const Document *d, const char *pos, int change)
 	Rune b = readchar(pos, &dmy);
 	while (change > 0) {
 		Rune a = b;
+		if (pos == d->bufstart && dir < 0) return (char *)pos;
+		if (pos == d->bufend && dir > 0) return (char *)pos;
 		pos = dwalkrune(d, pos, dir);
 		b = readchar(pos, &dmy);
 		if (iswordboundry(a, b)) change--;
