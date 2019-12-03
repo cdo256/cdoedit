@@ -12,7 +12,7 @@
 #define MAX_LINE_LEN 1024
 #define MAX_UTF8_BYTES 6
 
-#define SIGN(a) ((a)>0 ? +1 : (a)<0 ? +1 : 0)
+#define SIGN(a) ((a)>0 ? +1 : (a)<0 ? -1 : 0)
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
 #define POSCMP(a,b) ((a).line == (b).line ? (b).pos - (a).pos : (b).line - (a).line);
 
