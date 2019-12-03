@@ -1521,7 +1521,7 @@ kpress(XEvent *ev)
 			len = 2;
 		}
 	}
-	writerune(buf[0]);
+	ewrite(buf[0]);
 }
 
 void
@@ -1691,6 +1691,7 @@ main(int argc, char *argv[])
 	xinit(cols, rows);
 	xsetenv();
 	selinit();
+	einit();
 	run();
 
 	return 0;

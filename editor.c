@@ -351,9 +351,41 @@ dwrite(Document *d, Rune r)
 }
 
 void
-writerune(Rune r)
+einit()
+{
+	doc.bufstart = malloc(20000);
+	doc.bufend = doc.bufstart + 20000;
+	doc.curleft = doc.bufstart;
+	doc.curright = doc.bufend;
+	doc.renderstart = doc.bufstart;
+	doc.selanchor = NULL;
+	doc.scrolldirty = true;
+	doc.coldirty = true;
+}
+
+void
+ewrite(Rune r)
 {
 	dwrite(&doc, r);
+}
+
+void
+edraw(Line *line, int rowc, int colc)
+{
+	const char *p = doc.renderstart;
+	Glyph g;
+	for (int r = 0; r < rowc; r++) {
+		for (int c = 0; c < colc; c++) {
+			if (p == doc.curleft) p = doc.curright;
+			if (p == doc.bufend) g.u = ' ';
+			else g.u = readchar(p, &p);
+			if (g.u == '\n') break;
+			g.mode = 0;
+			g.fg = 1;
+			g.bg = 0;
+			line[r][c] = g;
+		}
+	}
 }
 
 void

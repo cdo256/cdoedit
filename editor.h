@@ -2,7 +2,9 @@
 
 #include "cdoedit.h"
 
-void writerune(Rune r);
+void einit();
+void ewrite(Rune r);
+void edraw(Line *line, int rowc, int colc);
 
 void changeindent(const Arg *);
 void deletechar(const Arg *);

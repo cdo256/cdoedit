@@ -17,7 +17,7 @@
 #include <unistd.h>
 #include <wchar.h>
 
-#include "cdoedit.h"
+#include "editor.h"
 #include "win.h"
 
 #if   defined(__linux)
@@ -2246,6 +2246,9 @@ void
 draw(void)
 {
 	int cx = term.c.x;
+
+	tfulldirt();
+	edraw(term.line, term.row, term.col);
 
 	if (!xstartdraw())
 		return;
