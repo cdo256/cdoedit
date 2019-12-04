@@ -4,7 +4,7 @@
 
 void einit();
 void ewrite(Rune r);
-void edraw(Line *line, int rowc, int colc);
+void edraw(Line *line, int colc, int rowc, int *curcol, int *currow);
 
 void changeindent(const Arg *);
 void deletechar(const Arg *);

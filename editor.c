@@ -372,13 +372,17 @@ ewrite(Rune r)
 }
 
 void
-edraw(Line *line, int rowc, int colc)
+edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 {
 	const char *p = doc.renderstart;
 	Glyph g;
 	for (int r = 0; r < rowc; r++) {
 		for (int c = 0; c < colc; c++) {
-			if (p == doc.curleft) p = doc.curright;
+			if (p == doc.curleft) {
+				*currow = r;
+				*curcol = c;
+				p = doc.curright;
+			}
 			if (p == doc.bufend) g.u = ' ';
 			else g.u = readchar(p, &p);
 			if (g.u == '\n') break;

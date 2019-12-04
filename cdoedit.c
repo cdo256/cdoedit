@@ -2248,7 +2248,7 @@ draw(void)
 	int cx = term.c.x;
 
 	tfulldirt();
-	edraw(term.line, term.row, term.col);
+	edraw(term.line, term.col, term.row, &term.c.x, &term.c.x);
 
 	if (!xstartdraw())
 		return;
