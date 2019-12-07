@@ -568,6 +568,7 @@ navline(const Arg *arg)
 		memchr(doc.curright, '\n', doc.bufend - doc.curright) :
 		memrchr(doc.bufstart, '\n', doc.curleft - doc.bufstart);
 	if (pos == NULL) pos = arg->i > 0 ? doc.bufend : doc.bufstart;
+	else if (arg->i < 0) pos++;
 	dnavigate(&doc, pos, ISSELECT(arg->i));
 }
 void
