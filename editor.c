@@ -354,7 +354,7 @@ dgrowgap(Document *d, size_t change)
 	ssize_t startshift = grow(&d->bufstart, &newsize, targetsize);
 	ssize_t endshift = (newsize - oldsize) + startshift;
 	if (startshift || endshift) {
-		d->selanchor += d->selanchor < d->curleft ? startshift : endshift;
+		if (d->selanchor) d->selanchor += d->selanchor < d->curleft ? startshift : endshift;
 		d->renderstart += d->renderstart < d->curleft ? startshift : endshift;
 		d->bufend += endshift;
 		d->curleft += startshift;
