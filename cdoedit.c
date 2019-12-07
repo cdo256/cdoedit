@@ -2245,10 +2245,10 @@ drawregion(int x1, int y1, int x2, int y2)
 void
 draw(void)
 {
-	int cx = term.c.x;
-
+	edraw(term.line, term.col, term.row, &term.c.x, &term.c.y);
 	tfulldirt();
-	edraw(term.line, term.col, term.row, &term.c.x, &term.c.x);
+	
+	int cx = term.c.x;
 
 	if (!xstartdraw())
 		return;

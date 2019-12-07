@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <ctype.h>
+#include <assert.h>
 
 #include "editor.h"
 
@@ -15,6 +16,46 @@
 #define SIGN(a) ((a)>0 ? +1 : (a)<0 ? -1 : 0)
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
 #define POSCMP(a,b) ((a).line == (b).line ? (b).pos - (a).pos : (b).line - (a).line);
+
+#define STUPIDLY_BIG(x) ((size_t)(x) & 0xFFFF000000000000ULL)
+#define assert_valid_pos(d, x) \
+	assert3((d)->bufstart <= (x), (x) <= (d)->curleft || (d)->curright <= (x), (x) <= (d)->bufend)
+#define assert_valid_read(d, x) \
+	assert_valid_pos(d,x); assert2((x) != (d)->curleft, (x) != (d)->bufend)
+#define assert_valid_write(d, x) assert2((d)->bufstart <= (x), (x) < (d)->bufend)
+#define assert_valid_read_range(d, x, y) \
+	assert4((x) <= (y), (d)->bufstart <= (x), (y) <= (d)->curleft || (d)->curright <= (x), (y) <= (d)->bufend)
+#define assert_valid_write_range(d, x,y) assert2((d)->bufstart <= (x), (y) < (d)->bufend)
+
+#ifdef NDEBUG
+#define assert1(a1)
+#define assert2(a1,a2)
+#define assert3(a1,a2,a3)
+#define assert4(a1,a2,a3,a4)
+#define assert5(a1,a2,a3,a4,a5)
+#define assert6(a1,a2,a3,a4,a5,a6)
+#define assert7(a1,a2,a3,a4,a5,a6,a7)
+#define assert8(a1,a2,a3,a4,a5,a6,a7,a8)
+#define assert9(a1,a2,a3,a4,a5,a6,a7,a8,a9)
+#define assert10(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
+#define assert11(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11)
+#define assert12(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12)
+#define FAIL()
+#else
+#define assert1(a1) assert(a1)
+#define assert2(a1,a2) assert(a1); assert1(a2)
+#define assert3(a1,a2,a3) assert(a1); assert2(a2,a3)
+#define assert4(a1,a2,a3,a4) assert(a1); assert3(a2,a3,a4)
+#define assert5(a1,a2,a3,a4,a5) assert(a1); assert4(a2,a3,a4,a5)
+#define assert6(a1,a2,a3,a4,a5,a6) assert(a1); assert5(a2,a3,a4,a5,a6)
+#define assert7(a1,a2,a3,a4,a5,a6,a7) assert(a1); assert6(a2,a3,a4,a5,a6,a7)
+#define assert8(a1,a2,a3,a4,a5,a6,a7,a8) assert(a1); assert7(a2,a3,a4,a5,a6,a7,a8)
+#define assert9(a1,a2,a3,a4,a5,a6,a7,a8,a9) assert(a1); assert8(a2,a3,a4,a5,a6,a7,a8,a9)
+#define assert10(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10) assert(a1); assert9(a2,a3,a4,a5,a6,a7,a8,a9,a10)
+#define assert11(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11) assert(a1); assert10(a2,a3,a4,a5,a6,a7,a8,a9,a11)
+#define assert12(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12) assert(a1); assert11(a2,a3,a4,a5,a6,a7,a8,a9,a12)
+#define fail() assert(0)
+#endif
 
 typedef struct {
 	char *bufstart;		/* buffer for storing chunks of the file */
@@ -44,6 +85,8 @@ size_t scratchlen;
 size_t
 memctchr(const char *s, int c, size_t n)
 {
+	assert_valid_read_range(&doc, s, s+n); /* remove line if using this outside doc */
+	assert2(!STUPIDLY_BIG(n), c == (c & 255));
 	size_t count = 0;
 	const char *end = s + n;
 	for (; s < end; n--, s++)
@@ -54,10 +97,16 @@ memctchr(const char *s, int c, size_t n)
 ssize_t
 grow(char **buf, size_t *len, size_t newlen)
 {
+	assert6(buf, *buf, len, *len, !STUPIDLY_BIG(*len), !STUPIDLY_BIG(newlen));
 	if (newlen > *len) {
 		*len = MAX(*len*2, newlen);
 		char *newbuf;
 		newbuf = realloc(*buf, *len);
+		if (!newbuf) {
+			fail();
+			fprintf(stderr, "could not realloc\n");
+			exit(1);
+		}
 		ssize_t shift = newbuf - *buf;
 		*buf = newbuf;
 		return shift;
@@ -72,11 +121,14 @@ userwarning(const char *s, ...)
 	va_start(va, s);
 	vfprintf(stderr, s, va);
 	va_end(va); 
+	fail();
 }
 
 Rune
 readchar(const char *c, /*out*/ const char **next)
 {
+	assert_valid_read(&doc, c);
+	assert(next);
 	Rune r;
 	if (*c & 127) {
 		r = *c;
@@ -86,6 +138,7 @@ readchar(const char *c, /*out*/ const char **next)
 	/* *c can't be 0b11111111 as this value can never appear in utf-8 */
 	int bytecount = __builtin_clz(~*c & 255);
 	*next = c + bytecount;
+	assert_valid_read_range(&doc, c, c+bytecount);
 	r = (*c) & ((128>>bytecount) - 1);
 	while (bytecount > 1) r = (r << 6) | (*++c & 63);
 	return r;
@@ -94,12 +147,14 @@ readchar(const char *c, /*out*/ const char **next)
 char *
 writechar(char *pos, Rune r)
 {
+	assert_valid_write(&doc, pos);
 	if (r & 127) {
 		*pos = r;
 		return pos+1;
 	}
 	int bitcount = __builtin_clz(r);
 	int bytecount = (bitcount - 2) / 5;
+	assert_valid_write_range(&doc, pos, pos + bytecount);
 	for (int i = bytecount-1; i > 0; i--) {
 		pos[i] = 128 | (63 & r);
 		r >>= 6;
@@ -112,20 +167,77 @@ bool
 iswordboundry(Rune a, Rune b)
 {
 	return ((isspace(a) && !isspace(b)) ||
-		b == '\n' || a == '\n' ||
+		b == '\n' || a == '\n' || a == RUNE_EOF || b == RUNE_EOF ||
 		(isalpha(a) && !isalpha(b)) ||
 		(isdigit(a) && !isdigit(b)) ||
 		(ispunct(a) && !ispunct(b)));
+}
+
+char *
+dwalkrune(const Document *d, const char *pos, int change)
+{
+	/* assumes document is valid utf-8 and the cursor is on a character boundary */
+	if (change > 0) for (; change > 0; change--) {
+		if (pos == d->curleft) pos = d->curright;
+		if (pos == d->bufend) break;
+		assert_valid_read(d, pos);
+		if (!(*pos & 128))
+			pos += 1;
+		else if (!(*pos & 32))
+			pos += 2;
+		else if (!(*pos & 16))
+			pos += 3;
+		else if (!(*pos & 8))
+			pos += 4;
+		else if (!(*pos & 4))
+			pos += 5;
+		else
+			pos += 6;
+	}
+	else if (change < 0) for (; change < 0; change++) {
+		if (pos == d->curright) pos = d->curleft;
+		if (pos == d->bufstart) break;
+		assert_valid_read(d, pos-1);
+		pos--;
+		while ((*pos >> 6) == 2)
+			pos--;
+	}
+	return (char *)pos;
+}
+
+Rune
+dreadchar(const Document *d, const char *pos, const char **next, int dir)
+{
+	assert2(dir == SIGN(dir), dir != 0);
+	if (dir > 0) {
+		if (pos == d->curleft) pos = d->curright;
+		if (pos == d->bufend) {
+			*next = NULL;
+			return EOF;
+		}
+		assert_valid_read(d, pos);
+		return readchar(pos, next);
+	} else if (dir < 0) {
+		const char *dmy;
+		if (pos == d->bufstart) {
+			*next = NULL;
+			return EOF;
+		}
+		pos = dwalkrune(d, pos, dir);
+		Rune r = readchar(pos, &dmy);
+		*next = pos;
+		return r;
+	}
+	return EOF; // should never be reached
 }
 
 bool
 disparagraphboundry(const Document *d, const char *pos)
 {
 	for (;;) {
-		if (pos == d->curleft) pos = d->curright;
-		if (pos == d->bufend) return true;
-		Rune r = readchar(pos, &pos);
+		Rune r = dreadchar(d, pos, &pos, +1);
 		if (r == '\n') return true;
+		else if (r == RUNE_EOF) return true;
 		if (!isspace(r)) return false;
 	}
 	return true;
@@ -134,15 +246,19 @@ disparagraphboundry(const Document *d, const char *pos)
 int
 dgetcol(const Document *d, const char *pos)
 {
+	assert_valid_pos(d, pos);
+	if (pos == d->curleft) pos = d->curright;
 	const char *q;
 	int col = 0;
 	if (pos > d->curright) {
+		assert_valid_read_range(d, d->curright, pos);
 		q = memrchr(d->curright, '\n', pos - d->curright);
 		if (q) {
 			q++; /* start of next line */
 			goto walk;
 		}
 	}
+	assert_valid_read_range(d, d->bufstart, d->curleft);
 	q = memrchr(d->bufstart, '\n', d->curleft - d->bufstart);
 	if (!q) q = d->bufstart;
 	else q++;
@@ -160,44 +276,15 @@ char *
 dgetposnearcol(const Document *d, const char *linestart, int col)
 {
 	int c = 0;
-	const char *pos = linestart;
+	const char *pos = linestart, *q;
 	while (c < col) {
 		if (pos == d->curleft) pos = d->curright;
 		if (pos == d->bufend) break;
-		Rune r = readchar(pos, &pos);
+		Rune r = readchar(pos, &q);
 		if (r == '\n') break;
 		else if (r == '\t') c = (c+7) & 7;
 		else if (isprint(r)) c++;
-	}
-	return (char *)pos;
-}
-
-char *
-dwalkrune(const Document *d, const char *pos, int change)
-{
-	/* assumes document is valid utf-8 and the cursor is on a character boundary */
-	if (change > 0) for (; change > 0; change--) {
-		if (pos == d->curleft) pos = d->curright;
-		if (pos == d->bufend) break;
-		if (!(*pos & 128))
-			pos += 1;
-		else if (!(*pos & 32))
-			pos += 2;
-		else if (!(*pos & 16))
-			pos += 3;
-		else if (!(*pos & 8))
-			pos += 4;
-		else if (!(*pos & 4))
-			pos += 5;
-		else
-			pos += 6;
-	}
-	else if (change < 0) for (; change < 0; change++) {
-		if (pos == d->curright) pos = d->curleft;
-		if (pos == d->bufstart) break;
-		pos--;
-		while ((*pos >> 6) == 2)
-			pos--;
+		pos = q;
 	}
 	return (char *)pos;
 }
@@ -205,23 +292,21 @@ dwalkrune(const Document *d, const char *pos, int change)
 char *
 dwalkword(const Document *d, const char *pos, int change)
 {
-	const char *dmy;
-	int dir = SIGN(change); change *= dir;
-	Rune b = readchar(pos, &dmy);
-	while (change > 0) {
-		Rune a = b;
-		if (pos == d->bufstart && dir < 0) return (char *)pos;
-		if (pos == d->bufend && dir > 0) return (char *)pos;
-		pos = dwalkrune(d, pos, dir);
-		b = readchar(pos, &dmy);
-		if (iswordboundry(a, b)) change--;
-	}
+	const char *q;	
+	Rune a = dreadchar(d, pos, &q, SIGN(change)), b;
+	do {
+		pos = q;
+		b = dreadchar(d, pos, &q, SIGN(change));
+	} while (!iswordboundry(a, b));
 	return (char *)pos;
 }
 
 char *
 dwalkrow(const Document *d, const char *pos, int change)
 {
+	pos = change > 0 ?
+		(pos == d->curleft ? d->curright : pos) :
+		(pos == d->curright ? d->curleft : pos);
 	const char *end = change > 0 ?
 		(pos < d->curleft ? d->curleft : d->bufend) :
 		(pos > d->curright ? d->curright : d->bufstart);
@@ -235,14 +320,12 @@ dwalkrow(const Document *d, const char *pos, int change)
 				pos = d->curright;
 				end = d->bufend;
 			} else {
-				pos = NULL;
+				pos = end;
 				break;
 			}
 		}
-		if (pos) pos = dwalkrune(d, pos, +1); /* return the char after the '\n' */
-		else pos = end;
 	} else if (change <= 0) {
-		change++; /* walk n+1 '\n's to go back n lines */
+		change--; /* walk n+1 '\n's to go back n lines */
 		while (change < 0) {
 			char *q = memrchr(end, '\n', pos - end);
 			if (q) {
@@ -353,10 +436,21 @@ dwrite(Document *d, Rune r)
 }
 
 void
+dscroll(Document *d, int rowc)
+{
+	char *renderend = dwalkrow(d, d->renderstart, rowc);
+	if (d->curleft < d->renderstart) {
+		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
+	} else if (d->curleft > renderend) {
+		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
+	}
+}
+
+void
 einit()
 {
-	doc.bufstart = malloc(20000);
-	doc.bufend = doc.bufstart + 20000;
+	doc.bufstart = malloc(10);
+	doc.bufend = doc.bufstart + 10;
 	doc.curleft = doc.bufstart;
 	doc.curright = doc.bufend;
 	doc.renderstart = doc.bufstart;
@@ -374,6 +468,8 @@ ewrite(Rune r)
 void
 edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 {
+	if (doc.scrolldirty) dscroll(&doc, rowc);
+
 	const char *p = doc.renderstart;
 	Glyph g;
 	for (int r = 0; r < rowc; r++) {

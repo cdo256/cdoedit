@@ -60,6 +60,8 @@ typedef unsigned short ushort;
 
 typedef uint_least32_t Rune;
 
+#define RUNE_EOF ((Rune)(~0ULL))
+
 #define Glyph Glyph_
 typedef struct {
 	Rune u;           /* character code */
