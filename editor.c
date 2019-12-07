@@ -473,15 +473,19 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 	const char *p = doc.renderstart;
 	Glyph g;
 	for (int r = 0; r < rowc; r++) {
+		bool endofline = false;
 		for (int c = 0; c < colc; c++) {
 			if (p == doc.curleft) {
-				*currow = r;
-				*curcol = c;
+				*currow = endofline ? r+1 : r;
+				*curcol = endofline ? 0 : c;
 				p = doc.curright;
 			}
-			if (p == doc.bufend) g.u = ' ';
+			if (p == doc.bufend || endofline) g.u = ' ';
 			else g.u = readchar(p, &p);
-			if (g.u == '\n') break;
+			if (g.u == '\n') {
+				endofline = true;
+				g.u = ' ';
+			}
 			g.mode = 0;
 			g.fg = 1;
 			g.bg = 0;
@@ -580,7 +584,9 @@ navparagraph(const Arg *arg)
 {
 	char *pos = doc.curleft;
 	do {
-		pos = dwalkrow(&doc, doc.curleft, SIGN(arg->i));
+		pos = dwalkrow(&doc, pos, SIGN(arg->i));
+		if (pos == doc.bufstart && arg->i < 0) break;
+		if (pos == doc.bufend && arg->i > 0) break;
 	} while (!disparagraphboundry(&doc, pos));
 	dnavigate(&doc, pos, ISSELECT(arg->i));
 }
