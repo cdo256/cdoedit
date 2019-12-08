@@ -1490,7 +1490,6 @@ kpress(XEvent *ev)
 	KeySym ksym;
 	char buf[32];
 	int len;
-	Rune c;
 	Status status;
 	Shortcut *bp;
 
@@ -1509,19 +1508,8 @@ kpress(XEvent *ev)
 	/* 2. composed string from input method */
 	if (len == 0)
 		return;
-	if (len == 1 && e->state & Mod1Mask) {
-		if (IS_SET(MODE_8BIT)) {
-			if (*buf < 0177) {
-				c = *buf | 0x80;
-				len = utf8encode(c, buf);
-			}
-		} else {
-			buf[1] = buf[0];
-			buf[0] = '\033';
-			len = 2;
-		}
-	}
-	ewrite(buf[0]);
+	else if (!(e->state & (CTRL | META)))
+		ewrite(buf[0]);
 }
 
 void

@@ -130,7 +130,7 @@ readchar(const char *c, /*out*/ const char **next)
 	assert_valid_read(&doc, c);
 	assert(next);
 	Rune r;
-	if (*c & 127) {
+	if (!(*c & 128)) {
 		r = *c;
 		*next = c+1;
 		return r;
