@@ -442,7 +442,7 @@ dscroll(Document *d, int rowc)
 	char *renderend = dwalkrow(d, d->renderstart, rowc);
 	if (d->curleft < d->renderstart) {
 		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
-	} else if (d->curleft > renderend) {
+	} else if (d->curleft >= renderend) {
 		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
 	}
 }
@@ -469,7 +469,7 @@ ewrite(Rune r)
 void
 edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 {
-	if (doc.scrolldirty) dscroll(&doc, rowc);
+	dscroll(&doc, rowc);
 
 	const char *p = doc.renderstart;
 	Glyph g;
