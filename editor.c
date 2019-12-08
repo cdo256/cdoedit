@@ -294,6 +294,7 @@ dwalkword(const Document *d, const char *pos, int change)
 {
 	const char *q;	
 	Rune a = dreadchar(d, pos, &q, SIGN(change)), b;
+	if (a == RUNE_EOF) return (char *)pos;
 	do {
 		pos = q;
 		b = dreadchar(d, pos, &q, SIGN(change));
@@ -550,6 +551,17 @@ deleteword(const Arg *arg)
 }
 
 void
+deleterow(const Arg *arg)
+{
+	(void)arg;
+	if (doc.selanchor) {
+		ddeletesel(&doc);
+	} else {
+		ddeleterange(&doc, dwalkrow(&doc, doc.curleft, 0), dwalkrow(&doc, doc.curleft, +1));
+	}
+}
+
+void
 navchar(const Arg *arg)
 {
 	char *pos = dwalkrune(&doc, doc.curleft, SIGN(arg->i));
@@ -611,3 +623,4 @@ newline(const Arg *arg)
 	(void)arg;
 	dwrite(&doc, '\n');
 }
+

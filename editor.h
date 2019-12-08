@@ -9,6 +9,7 @@ void edraw(Line *line, int colc, int rowc, int *curcol, int *currow);
 void changeindent(const Arg *);
 void deletechar(const Arg *);
 void deleteword(const Arg *);
+void deleterow(const Arg *);
 void navchar(const Arg *);
 void navdocument(const Arg *);
 void navline(const Arg *);

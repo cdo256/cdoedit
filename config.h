@@ -108,6 +108,8 @@ static Shortcut shortcuts[] = {
 	{ 0,                    XK_Delete,      deletechar,     {.i = +1} },
 	{ CTRL,                 XK_BackSpace,   deleteword,     {.i = -1} },
 	{ CTRL,                 XK_Delete,      deleteword,     {.i = +1} },
+	{ CTRL,                 'K',            deleterow,      {.i =  0} },
+	{ CTRL,                 'k',            deleterow,      {.i =  0} },
 
 	/* navigation */
 	/* mask                 keysym          function        argument */
