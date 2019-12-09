@@ -76,8 +76,8 @@ typedef struct {
 
 /* Globals */
 static Document doc;
-char *scratchbuf;
-size_t scratchlen;
+char *scratchbuf = NULL;
+size_t scratchlen = 0;
 
 /* I previously had an overly complex unrolled version of this. */
 /* For simplicity and since modern compilers can optimize vector operations better than I can,
@@ -97,7 +97,7 @@ memctchr(const char *s, int c, size_t n)
 ssize_t
 grow(char **buf, size_t *len, size_t newlen)
 {
-	assert6(buf, *buf, len, *len, !STUPIDLY_BIG(*len), !STUPIDLY_BIG(newlen));
+	assert5(buf, len, !*buf == !*len, !STUPIDLY_BIG(*len), !STUPIDLY_BIG(newlen));
 	if (newlen > *len) {
 		*len = MAX(*len*2, newlen);
 		char *newbuf;
@@ -147,7 +147,6 @@ readchar(const char *c, /*out*/ const char **next)
 char *
 writechar(char *pos, Rune r)
 {
-	assert_valid_write(&doc, pos);
 	if (r & 127) {
 		*pos = r;
 		return pos+1;
@@ -229,6 +228,39 @@ dreadchar(const Document *d, const char *pos, const char **next, int dir)
 		return r;
 	}
 	return EOF; // should never be reached
+}
+
+char *
+dinsert(Document *d, char *pos, char *insertstart, size_t len)
+{
+	char **toupdate[] = { &d->renderstart, &d->selanchor, NULL };
+	if (pos <= d->curleft) {
+		memmove(pos + len, pos, d->curleft - pos);
+		for (char ***p = toupdate; *p; p++) {
+			if (pos <= **p && **p <= d->curleft) **p += len;
+		}
+		d->curleft += len;
+		memcpy(pos, insertstart, len);
+		d->coldirty = true;
+		return pos + len;
+	} else {
+		memmove(d->curright - len, d->curright, pos - d->curright);
+		for (char ***p = toupdate; *p; p++) {
+			if (d->curright <= **p && **p < pos) **p -= len;
+		}
+		d->curright -= len;
+		memcpy(pos - len, insertstart, len);
+		d->coldirty = true;
+		return pos;
+	}
+}
+
+char *
+dinsertchar(Document *d, char *pos, Rune r)
+{
+	char buf[MAX_UTF8_BYTES];
+	char *end = writechar(buf, r);
+	return dinsert(d, pos, buf, end - buf);
 }
 
 bool
@@ -439,6 +471,7 @@ dwrite(Document *d, Rune r)
 void
 dscroll(Document *d, int rowc)
 {
+	d->renderstart = dwalkrow(d, d->renderstart, 0);
 	char *renderend = dwalkrow(d, d->renderstart, rowc);
 	if (d->curleft < d->renderstart) {
 		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
@@ -475,16 +508,25 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 	Glyph g;
 	for (int r = 0; r < rowc; r++) {
 		bool endofline = false;
+		bool tab = false;
 		for (int c = 0; c < colc; c++) {
 			if (p == doc.curleft) {
 				*currow = endofline ? r+1 : r;
 				*curcol = endofline ? 0 : c;
 				p = doc.curright;
 			}
-			if (p == doc.bufend || endofline) g.u = ' ';
+			if (p == doc.bufend || endofline || tab) g.u = ' ';
 			else g.u = readchar(p, &p);
+			if (tab && (c & 7) == 0) {
+				*currow = r;
+				*curcol = c;
+				tab = false;
+			}
 			if (g.u == '\n') {
 				endofline = true;
+				g.u = ' ';
+			} else if (g.u == '\t') {
+				tab = true;
 				g.u = ' ';
 			}
 			g.mode = 0;
@@ -500,31 +542,17 @@ changeindent(const Arg *arg)
 {
 	char *selleft = doc.selanchor ? MIN(doc.selanchor, doc.curleft) : doc.curleft;
 	char *selright = doc.selanchor ? MAX(doc.selanchor, doc.curleft) : doc.curleft;
-	char *s;
-	size_t linecount = 1+memctchr(selleft, '\n', selright - selleft);
-	for (s = selleft; s > doc.bufstart && s[-1] != '\n'; s--);
-	size_t maxchange = linecount * MAX(arg->i, 0);
-	size_t maxnewlen = maxchange + (selright-s);
-	grow(&scratchbuf, &scratchlen, maxnewlen);
-	ssize_t move = dgrowgap(&doc, maxchange);
-	s += move;
-	char *p = scratchbuf;
-	for (char *p = scratchbuf; s < selright; s++, p++) {
-		*p = *s;
-		if (*s == '\n') {
-			if (arg->i > 0) {
-				for (int i = 0; i < arg->i; i++)
-					*p++ = '\t';
-			} else {
-				for (int i = 0; i < -arg->i; i++)
-					if (*s == '\t') s++;
-			}
+	const char *dmy;
+
+	for (char* p = dwalkrow(&doc, selleft, 0); p < doc.bufend && p <= selright; p = dwalkrow(&doc, p, +1)) {
+		if (arg->i > 0) p = dinsertchar(&doc, p, '\t');
+		else if (dreadchar(&doc, p, &dmy, +1) == '\t') {
+			char *q = p < doc.curright ? p : p - 1;
+			ddeleterange(&doc, p, p + 1);
+			p = q;
 		}
 	}
-	memcpy(scratchbuf, selleft, p - scratchbuf);
-	selleft += (p - scratchbuf);
 }
-
 
 void
 deletechar(const Arg *arg)
