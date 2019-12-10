@@ -230,9 +230,28 @@ dreadchar(const Document *d, const char *pos, const char **next, int dir)
 	return EOF; // should never be reached
 }
 
+ssize_t
+dgrowgap(Document *d, size_t change)
+{
+	size_t targetsize = 4 + change + (d->curleft - d->bufstart) + (d->bufend - d->curright);
+	size_t oldsize = d->bufend - d->bufstart;
+	size_t newsize = oldsize;
+	ssize_t startshift = grow(&d->bufstart, &newsize, targetsize);
+	ssize_t endshift = (newsize - oldsize) + startshift;
+	if (startshift || endshift) {
+		if (d->selanchor) d->selanchor += d->selanchor < d->curleft ? startshift : endshift;
+		d->renderstart += d->renderstart < d->curleft ? startshift : endshift;
+		d->bufend += endshift;
+		d->curleft += startshift;
+		d->curright += endshift;
+	}
+	return startshift;
+}
+
 char *
 dinsert(Document *d, char *pos, char *insertstart, size_t len)
 {
+	pos += dgrowgap(d, len);
 	char **toupdate[] = { &d->renderstart, &d->selanchor, NULL };
 	if (pos <= d->curleft) {
 		memmove(pos + len, pos, d->curleft - pos);
@@ -294,7 +313,7 @@ dgetcol(const Document *d, const char *pos)
 	q = memrchr(d->bufstart, '\n', d->curleft - d->bufstart);
 	if (!q) q = d->bufstart;
 	else q++;
-walk: 
+walk:
 	for (;;) {
 		if (q == d->curleft) q = d->curright;
 		if (q == pos) return col;
@@ -378,24 +397,6 @@ dwalkrow(const Document *d, const char *pos, int change)
 	return (char *)pos;
 }
 
-ssize_t
-dgrowgap(Document *d, size_t change)
-{
-	size_t targetsize = 4 + change + (d->curleft - d->bufstart) + (d->bufend - d->curright);
-	size_t oldsize = d->bufend - d->bufstart;
-	size_t newsize = oldsize;
-	ssize_t startshift = grow(&d->bufstart, &newsize, targetsize);
-	ssize_t endshift = (newsize - oldsize) + startshift;
-	if (startshift || endshift) {
-		if (d->selanchor) d->selanchor += d->selanchor < d->curleft ? startshift : endshift;
-		d->renderstart += d->renderstart < d->curleft ? startshift : endshift;
-		d->bufend += endshift;
-		d->curleft += startshift;
-		d->curright += endshift;
-	}
-	return startshift;
-}
-
 
 void
 dnavigate(Document *d, char *pos, bool isselect)
@@ -408,6 +409,8 @@ dnavigate(Document *d, char *pos, bool isselect)
 		d->curleft -= change;
 		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
 			d->selanchor += d->curright - d->curleft;
+		} else if (isselect && d->selanchor == NULL) {
+			d->selanchor = d->curright + change;
 		}
 	} else if (pos > d->curright) {
 		size_t change = pos - d->curright;
@@ -417,6 +420,8 @@ dnavigate(Document *d, char *pos, bool isselect)
 		d->curleft += change;
 		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
 			d->selanchor -= d->curright - d->curleft;
+		} else if (isselect && d->selanchor == NULL) {
+			d->selanchor = d->curleft - change;
 		}
 	}
 	if (!isselect) d->selanchor = NULL;
@@ -455,17 +460,22 @@ ddeleterange(Document *d, char *left, char *right)
 void
 ddeletesel(Document *d)
 {
-	if (d->selanchor < d->curleft)
+	assert_valid_pos(d, d->selanchor);
+	if (d->selanchor <= d->curleft)
 		ddeleterange(d, d->selanchor, d->curleft);
 	else
 		ddeleterange(d, d->curright, d->selanchor);
+	d->selanchor = NULL;
 }
 
 void
 dwrite(Document *d, Rune r)
 {
+	if (d->selanchor) ddeletesel(d);
 	dgrowgap(d, MAX_UTF8_BYTES);
 	d->curleft = writechar(d->curleft, r);
+	d->selanchor = NULL;
+	assert(d->curleft < d->curright);
 }
 
 void
@@ -517,7 +527,7 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 			}
 			if (p == doc.bufend || endofline || tab) g.u = ' ';
 			else g.u = readchar(p, &p);
-			if (tab && (c & 7) == 0) {
+			if (p == doc.curright && tab && (c & 7) == 0) {
 				*currow = r;
 				*curcol = c;
 				tab = false;
