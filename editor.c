@@ -25,7 +25,9 @@ typedef enum {
 
 #define SIGN(a) ((a)>0 ? +1 : (a)<0 ? -1 : 0)
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
-#define POSCMP(a,b) ((a).line == (b).line ? (b).pos - (a).pos : (b).line - (a).line);
+#define POSCMP(d, a, b) ( \
+	((a) >= (d)->curright ? (a) - ((d)->curright - (d)->curleft) : (a)) - \
+	((b) >= (d)->curright ? (b) - ((d)->curright - (d)->curleft) : (b)))
 
 #define STUPIDLY_BIG(x) ((size_t)(x) & 0xFFFF000000000000ULL)
 #define assert_valid_pos(d, x) \
@@ -35,7 +37,7 @@ typedef enum {
 #define assert_valid_write(d, x) assert2((d)->bufstart <= (x), (x) < (d)->bufend)
 #define assert_valid_read_range(d, x, y) \
 	assert4((x) <= (y), (d)->bufstart <= (x), (y) <= (d)->curleft || (d)->curright <= (x), (y) <= (d)->bufend)
-#define assert_valid_write_range(d, x,y) assert2((d)->bufstart <= (x), (y) < (d)->bufend)
+#define assert_valid_write_range(d, x,y) assert2((d)->bufstart <= (x), (y) <= (d)->bufend)
 #define assert_valid_behaviour(b) assert3(!(b & KEEPONDELETE) || !(b & NULLONDELETE), !(b & PREFERLEFT) || !(b & PREFERRIGHT), !(b & HOLDONNAVIGATE) || !(b & SLIDEONNAVIGATE));
 
 #ifdef NDEBUG
@@ -273,7 +275,7 @@ dreadchar(const Document *d, const char *pos, const char **next, int dir)
 		if (pos == d->curleft) pos = d->curright;
 		if (pos == d->bufend) {
 			*next = NULL;
-			return EOF;
+			return RUNE_EOF;
 		}
 		assert_valid_read(d, pos);
 		Rune r;
@@ -282,14 +284,14 @@ dreadchar(const Document *d, const char *pos, const char **next, int dir)
 	} else if (dir < 0) {
 		if (pos == d->bufstart) {
 			*next = NULL;
-			return EOF;
+			return RUNE_EOF;
 		}
 		pos = dwalkrune(d, pos, dir);
 		utf8decode(pos, &r, d->bufend - pos);
 		*next = pos;
 		return r;
 	}
-	return EOF; // should never be reached
+	return RUNE_EOF; // should never be reached
 }
 
 /* needed for cases where there's dependencies between pointers (eg. most shifts rely on d->curleft) */
@@ -530,10 +532,11 @@ dgetcol(const Document *d, const char *pos)
 	else q++;
 walk:
 	for (;;) {
-		if (q == pos) return col;
+		if (0 == POSCMP(d, q, pos)) return col;
 		Rune r = dreadchar(d, q, &q, +1);
 		if (r == '\t') col = (col+7) & 7;
 		else if (isprint(r)) col++;
+		else if (r == RUNE_EOF) return col;
 	}
 }
 
@@ -547,6 +550,7 @@ dgetposnearcol(const Document *d, const char *linestart, int col)
 		if (r == '\n') break;
 		else if (r == '\t') c = (c+7) & 7;
 		else if (isprint(r)) c++;
+		else if (r == RUNE_EOF) return (char *)pos;
 		pos = q;
 	}
 	return (char *)pos;
@@ -628,6 +632,7 @@ void
 ddeleterange(Document *d, char *left, char *right)
 {
 	if (left <= d->curleft && d->curright <= right) {
+		/* nothing needs to be done in here */
 	} else if (right <= d->curleft) {
 		memmove(left, right, d->curleft - right);
 	} else {
@@ -692,18 +697,25 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 
 	const char *p = doc.renderstart;
 	Glyph g;
+	bool firstpass = true;
+	bool insel = doc.selanchor && doc.selanchor < doc.renderstart;
 	for (int r = 0; r < rowc; r++) {
 		bool endofline = false;
 		bool tab = false;
 		for (int c = 0; c < colc; c++) {
-			if (p == doc.curleft) {
+			if (0 == POSCMP(&doc, p, doc.selanchor)) insel ^= 1; 
+			if (0 == POSCMP(&doc, p, doc.curleft) && firstpass) {
 				*currow = endofline ? r+1 : r;
 				*curcol = endofline ? 0 : c;
-				p = doc.curright;
 			}
-			if (p == doc.bufend || endofline || tab) g.u = ' ';
-			else p += utf8decode(p, &g.u, doc.bufend - p);
-			if (p == doc.curright && tab && (c & 7) == 0) {
+			if (0 == POSCMP(&doc, p, doc.bufend) || endofline || tab) {
+				g.u = ' ';
+				firstpass = false;
+			} else {
+				g.u = dreadchar(&doc, p, &p, +1);
+				firstpass = true;
+			}
+			if (0 == POSCMP(&doc, p, doc.curleft) && tab && (c & 7) == 0) {
 				*currow = r;
 				*curcol = c;
 				tab = false;
@@ -815,8 +827,8 @@ navparagraph(const Arg *arg)
 	char *pos = doc.curleft;
 	do {
 		pos = dwalkrow(&doc, pos, SIGN(arg->i));
-		if (pos == doc.bufstart && arg->i < 0) break;
-		if (pos == doc.bufend && arg->i > 0) break;
+		if (0 == POSCMP(&doc, pos, doc.bufstart) && arg->i < 0) break;
+		if (0 == POSCMP(&doc, pos, doc.bufend) && arg->i > 0) break;
 	} while (!disparagraphboundry(&doc, pos));
 	dnavigate(&doc, pos, ISSELECT(arg->i));
 }
