@@ -11,7 +11,8 @@
 #include "editor.h"
 
 #define MAX_LINE_LEN 1024
-#define MAX_UTF8_BYTES 6
+#define UTF_SIZ 4
+#define UTF_INVALID 0xFFFD
 
 typedef enum {
 	KEEPONDELETE = 1,
@@ -21,8 +22,6 @@ typedef enum {
 	HOLDONNAVIGATE = 16,
 	SLIDEONNAVIGATE = 32,
 } UpdateSetEntryBehaviour;
-
-#define UpdateSetEntryBehaviourDefault KEEPONDELETE | PREFERLEFT | HOLDONNAVIGATE
 
 #define SIGN(a) ((a)>0 ? +1 : (a)<0 ? -1 : 0)
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
@@ -100,6 +99,11 @@ typedef struct {
 	int pos;
 } Pos;
 
+static uchar utfbyte[UTF_SIZ + 1] = {0x80,    0, 0xC0, 0xE0, 0xF0};
+static uchar utfmask[UTF_SIZ + 1] = {0xC0, 0x80, 0xE0, 0xF0, 0xF8};
+static Rune utfmin[UTF_SIZ + 1] = {       0,    0,  0x80,  0x800,  0x10000};
+static Rune utfmax[UTF_SIZ + 1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10FFFF};
+
 /* Globals */
 static Document doc;
 char *scratchbuf = NULL;
@@ -111,7 +115,6 @@ size_t scratchlen = 0;
 size_t
 memctchr(const char *s, int c, size_t n)
 {
-	assert_valid_read_range(&doc, s, s+n); /* remove line if using this outside doc */
 	assert2(!STUPIDLY_BIG(n), c == (c & 255));
 	size_t count = 0;
 	const char *end = s + n;
@@ -149,42 +152,74 @@ userwarning(const char *s, ...)
 	fail();
 }
 
-Rune
-readchar(const char *c, /*out*/ const char **next)
+size_t
+utf8validate(Rune *u, size_t i)
 {
-	assert_valid_read(&doc, c);
-	assert(next);
-	Rune r;
-	if (!(*c & 128)) {
-		r = *c;
-		*next = c+1;
-		return r;
-	}
-	assert((unsigned)*c != 255);
-	int bytecount = __builtin_clz(~*c & 255);
-	*next = c + bytecount;
-	assert_valid_read_range(&doc, c, c+bytecount);
-	r = (*c) & ((128>>bytecount) - 1);
-	while (bytecount > 1) r = (r << 6) | (*++c & 63);
-	return r;
+	if (!BETWEEN(*u, utfmin[i], utfmax[i]) || BETWEEN(*u, 0xD800, 0xDFFF))
+		*u = UTF_INVALID;
+	for (i = 1; *u > utfmax[i]; ++i)
+		;
+
+	return i;
 }
 
-char *
-writechar(char *pos, Rune r)
+Rune
+utf8decodebyte(char c, size_t *i)
 {
-	if (r & 127) {
-		*pos = r;
-		return pos+1;
+	for (*i = 0; *i < LEN(utfmask); ++(*i))
+		if (((uchar)c & utfmask[*i]) == utfbyte[*i])
+			return (uchar)c & ~utfmask[*i];
+
+	return 0;
+}
+
+char
+utf8encodebyte(Rune u, size_t i)
+{
+	return utfbyte[i] | (u & ~utfmask[i]);
+}
+
+size_t
+utf8decode(const char *c, Rune *u, size_t clen)
+{
+	size_t i, j, len, type;
+	Rune udecoded;
+
+	*u = UTF_INVALID;
+	if (!clen)
+		return 0;
+	udecoded = utf8decodebyte(c[0], &len);
+	if (!BETWEEN(len, 1, UTF_SIZ))
+		return 1;
+	for (i = 1, j = 1; i < clen && j < len; ++i, ++j) {
+		udecoded = (udecoded << 6) | utf8decodebyte(c[i], &type);
+		if (type != 0)
+			return j;
 	}
-	int bitcount = __builtin_clz(r);
-	int bytecount = (bitcount - 2) / 5;
-	assert_valid_write_range(&doc, pos, pos + bytecount);
-	for (int i = bytecount-1; i > 0; i--) {
-		pos[i] = 128 | (63 & r);
-		r >>= 6;
+	if (j < len)
+		return 0;
+	*u = udecoded;
+	utf8validate(u, len);
+
+	return len;
+}
+
+size_t
+utf8encode(Rune u, char *c)
+{
+	size_t len, i;
+
+	len = utf8validate(&u, 0);
+	if (len > UTF_SIZ)
+		return 0;
+
+	for (i = len - 1; i != 0; --i) {
+		c[i] = utf8encodebyte(u, 0);
+		u >>= 6;
 	}
-	*pos = (~0U << (8 - bytecount)) | (r & ((1<<(7 - bytecount))-1));
-	return pos + bytecount;
+	c[0] = utf8encodebyte(u, len);
+
+	return len;
 }
 
 bool
@@ -233,6 +268,7 @@ Rune
 dreadchar(const Document *d, const char *pos, const char **next, int dir)
 {
 	assert2(dir == SIGN(dir), dir != 0);
+	Rune r;
 	if (dir > 0) {
 		if (pos == d->curleft) pos = d->curright;
 		if (pos == d->bufend) {
@@ -240,15 +276,16 @@ dreadchar(const Document *d, const char *pos, const char **next, int dir)
 			return EOF;
 		}
 		assert_valid_read(d, pos);
-		return readchar(pos, next);
+		Rune r;
+		*next = pos + utf8decode(pos, &r, d->bufend - pos);
+		return r;
 	} else if (dir < 0) {
-		const char *dmy;
 		if (pos == d->bufstart) {
 			*next = NULL;
 			return EOF;
 		}
 		pos = dwalkrune(d, pos, dir);
-		Rune r = readchar(pos, &dmy);
+		utf8decode(pos, &r, d->bufend - pos);
 		*next = pos;
 		return r;
 	}
@@ -424,7 +461,7 @@ dupdateonnavigate(Document *d, char *newcursor)
 void
 dgrowgap(Document *d, size_t change)
 {
-	size_t targetsize = MAX_UTF8_BYTES + change + (d->curleft - d->bufstart) + (d->bufend - d->curright);
+	size_t targetsize = UTF_SIZ + change + (d->curleft - d->bufstart) + (d->bufend - d->curright);
 	size_t oldsize = d->bufend - d->bufstart;
 	size_t newsize = oldsize;
 	char *newbuf = d->bufstart;
@@ -454,9 +491,9 @@ void
 dinsertchar(Document *d, char *pos, Rune r)
 {
 	usadd(&d->us, &pos, 0);
-	char buf[MAX_UTF8_BYTES];
-	char *end = writechar(buf, r);
-	dinsert(d, pos, buf, end - buf);
+	char buf[UTF_SIZ];
+	size_t len = utf8encode(r, buf);
+	dinsert(d, pos, buf, len);
 	usremv(&d->us, &pos);
 }
 
@@ -493,9 +530,8 @@ dgetcol(const Document *d, const char *pos)
 	else q++;
 walk:
 	for (;;) {
-		if (q == d->curleft) q = d->curright;
 		if (q == pos) return col;
-		Rune r = readchar(q, &q);
+		Rune r = dreadchar(d, q, &q, +1);
 		if (r == '\t') col = (col+7) & 7;
 		else if (isprint(r)) col++;
 	}
@@ -507,9 +543,7 @@ dgetposnearcol(const Document *d, const char *linestart, int col)
 	int c = 0;
 	const char *pos = linestart, *q;
 	while (c < col) {
-		if (pos == d->curleft) pos = d->curright;
-		if (pos == d->bufend) break;
-		Rune r = readchar(pos, &q);
+		Rune r = dreadchar(d, pos, &q, +1);
 		if (r == '\n') break;
 		else if (r == '\t') c = (c+7) & 7;
 		else if (isprint(r)) c++;
@@ -668,7 +702,7 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 				p = doc.curright;
 			}
 			if (p == doc.bufend || endofline || tab) g.u = ' ';
-			else g.u = readchar(p, &p);
+			else p += utf8decode(p, &g.u, doc.bufend - p);
 			if (p == doc.curright && tab && (c & 7) == 0) {
 				*currow = r;
 				*curcol = c;
@@ -806,4 +840,3 @@ newline(const Arg *arg)
 	(void)arg;
 	dinsertchar(&doc, doc.curleft, '\n');
 }
-

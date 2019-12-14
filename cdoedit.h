@@ -84,24 +84,18 @@ void die(const char *, ...);
 void redraw(void);
 void draw(void);
 
-void printscreen(const Arg *);
-void printsel(const Arg *);
 void sendbreak(const Arg *);
-void toggleprinter(const Arg *);
 
 int tattrset(int);
 void tnew(int, int);
 void tresize(int, int);
-void tsetdirtattr(int);
 
 void resettitle(void);
 
 void selclear(void);
 void selinit(void);
-void selstart(int, int, int);
 void selextend(int, int, int, int);
 int selected(int, int);
-char *getsel(void);
 
 size_t utf8encode(Rune, char *);
 
