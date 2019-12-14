@@ -158,6 +158,8 @@ static Shortcut shortcuts[] = {
 	/* mask                 keysym          function        argument */
 	{ CTRL,                 XK_plus,        zoom,           {.f = +1} },
 	{ CTRL,                 XK_minus,       zoom,           {.f = -1} },
+	{ CTRL,                 'S',            save,           {.i =  0} },
+	{ CTRL,                 's',            save,           {.i =  0} },
 };
 
 /*

@@ -18,3 +18,7 @@ void navparagraph(const Arg *);
 void navrow(const Arg *);
 void navword(const Arg *);
 void newline(const Arg *);
+void new(const Arg *);
+void load(const Arg *);
+void save(const Arg *);
+void saveas(const Arg *);

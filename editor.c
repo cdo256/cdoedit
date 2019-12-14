@@ -110,7 +110,7 @@ static Rune utfmax[UTF_SIZ + 1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10FFFF};
 static Document doc;
 char *scratchbuf = NULL;
 size_t scratchlen = 0;
-char* filename = NULL;
+char* filename = "testout";
 
 /* I previously had an overly complex unrolled version of this. */
 /* For simplicity and since modern compilers can optimize vector operations better than I can,
@@ -856,3 +856,28 @@ newline(const Arg *arg)
 	dinsertchar(&doc, doc.curleft, '\n');
 }
 
+bool
+dwritefile(const Document *d, char *path)
+{
+	bool ret = true;
+	size_t leftlen = d->curleft - d->bufstart;
+	size_t rightlen = d->bufend - d->curright;
+	size_t len = leftlen + rightlen;
+	char *buf = malloc(len);
+	if (!buf) ret = false;
+	memcpy(buf, d->bufstart, leftlen);
+	memcpy(buf+leftlen, d->curright, rightlen);
+	FILE *file = fopen(path, "w");
+	if (!file) ret = false;
+	else if (!fwrite(buf, 1, len, file)) ret = false;
+	fclose(file);
+	return ret;
+}
+
+void
+save(const Arg *arg)
+{
+	(void)arg;
+	//if (!filename) saveas(arg);
+	dwritefile(&doc, filename);
+}
