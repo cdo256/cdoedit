@@ -166,7 +166,6 @@ static void focus(XEvent *);
 static void propnotify(XEvent *);
 static void selnotify(XEvent *);
 static void selrequest(XEvent *);
-static void setsel(char *, Time);
 static int match(uint, uint);
 
 static void run(void);
@@ -459,26 +458,6 @@ selrequest(XEvent *e)
 	/* all done, send a notification to the listener */
 	if (!XSendEvent(xsre->display, xsre->requestor, 1, 0, (XEvent *) &xev))
 		fprintf(stderr, "Error sending SelectionNotify event\n");
-}
-
-void
-setsel(char *str, Time t)
-{
-	if (!str)
-		return;
-
-	free(xsel.primary);
-	xsel.primary = str;
-
-	XSetSelectionOwner(xw.dpy, XA_PRIMARY, xw.win, t);
-	if (XGetSelectionOwner(xw.dpy, XA_PRIMARY) != xw.win)
-		selclear();
-}
-
-void
-xsetsel(char *str)
-{
-	setsel(str, CurrentTime);
 }
 
 void
@@ -1232,8 +1211,6 @@ xdrawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 	Color drawcol;
 
 	/* remove the old cursor */
-	if (selected(ox, oy))
-		og.mode ^= ATTR_REVERSE;
 	xdrawglyph(og, ox, oy);
 
 	if (IS_SET(MODE_HIDE))
@@ -1247,21 +1224,11 @@ xdrawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 	if (IS_SET(MODE_REVERSE)) {
 		g.mode |= ATTR_REVERSE;
 		g.bg = defaultfg;
-		if (selected(cx, cy)) {
-			drawcol = dc.col[defaultcs];
-			g.fg = defaultrcs;
-		} else {
-			drawcol = dc.col[defaultrcs];
-			g.fg = defaultcs;
-		}
+		drawcol = dc.col[defaultrcs];
+		g.fg = defaultcs;
 	} else {
-		if (selected(cx, cy)) {
-			g.fg = defaultfg;
-			g.bg = defaultrcs;
-		} else {
-			g.fg = defaultbg;
-			g.bg = defaultcs;
-		}
+		g.fg = defaultbg;
+		g.bg = defaultcs;
 		drawcol = dc.col[g.bg];
 	}
 
@@ -1353,8 +1320,6 @@ xdrawline(Line line, int x1, int y1, int x2)
 		new = line[x];
 		if (new.mode == ATTR_WDUMMY)
 			continue;
-		if (selected(x, y1))
-			new.mode ^= ATTR_REVERSE;
 		if (i > 0 && ATTRCMP(base, new)) {
 			xdrawglyphfontspecs(specs, base, i, ox, y1);
 			specs += i;
@@ -1677,7 +1642,6 @@ main(int argc, char *argv[])
 	tnew(cols, rows);
 	xinit(cols, rows);
 	xsetenv();
-	selinit();
 	einit();
 	run();
 

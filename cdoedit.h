@@ -95,7 +95,6 @@ void resettitle(void);
 void selclear(void);
 void selinit(void);
 void selextend(int, int, int, int);
-int selected(int, int);
 
 size_t utf8encode(Rune, char *);
 

@@ -158,7 +158,6 @@ static void drawregion(int, int, int, int);
 
 /* Globals */
 static Term term;
-static Selection sel;
 static int cmdfd;
 
 void *
@@ -188,40 +187,6 @@ xstrdup(char *s)
 		die("strdup: %s\n", strerror(errno));
 
 	return s;
-}
-
-void
-selinit(void)
-{
-	sel.mode = SEL_IDLE;
-	sel.snap = 0;
-	sel.ob.x = -1;
-}
-
-int
-selected(int x, int y)
-{
-	if (sel.mode == SEL_EMPTY || sel.ob.x == -1 ||
-			sel.alt != IS_SET(MODE_ALTSCREEN))
-		return 0;
-
-	if (sel.type == SEL_RECTANGULAR)
-		return BETWEEN(y, sel.nb.y, sel.ne.y)
-		    && BETWEEN(x, sel.nb.x, sel.ne.x);
-
-	return BETWEEN(y, sel.nb.y, sel.ne.y)
-	    && (y != sel.nb.y || x >= sel.nb.x)
-	    && (y != sel.ne.y || x <= sel.ne.x);
-}
-
-void
-selclear(void)
-{
-	if (sel.ob.x == -1)
-		return;
-	sel.mode = SEL_IDLE;
-	sel.ob.x = -1;
-	tsetdirt(sel.nb.y, sel.ne.y);
 }
 
 void
@@ -366,8 +331,6 @@ tclearregion(int x1, int y1, int x2, int y2)
 		term.dirty[y] = 1;
 		for (x = x1; x <= x2; x++) {
 			gp = &term.line[y][x];
-			if (selected(x, y))
-				selclear();
 			gp->fg = term.c.attr.fg;
 			gp->bg = term.c.attr.bg;
 			gp->mode = 0;
