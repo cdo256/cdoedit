@@ -13,6 +13,17 @@
 #define MAX_LINE_LEN 1024
 #define MAX_UTF8_BYTES 6
 
+typedef enum {
+	KEEPONDELETE = 1,
+	NULLONDELETE = 2,
+	PREFERLEFT = 4,
+	PREFERRIGHT = 8,
+	HOLDONNAVIGATE = 16,
+	SLIDEONNAVIGATE = 32,
+} UpdateSetEntryBehaviour;
+
+#define UpdateSetEntryBehaviourDefault KEEPONDELETE | PREFERLEFT | HOLDONNAVIGATE
+
 #define SIGN(a) ((a)>0 ? +1 : (a)<0 ? -1 : 0)
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
 #define POSCMP(a,b) ((a).line == (b).line ? (b).pos - (a).pos : (b).line - (a).line);
@@ -26,6 +37,7 @@
 #define assert_valid_read_range(d, x, y) \
 	assert4((x) <= (y), (d)->bufstart <= (x), (y) <= (d)->curleft || (d)->curright <= (x), (y) <= (d)->bufend)
 #define assert_valid_write_range(d, x,y) assert2((d)->bufstart <= (x), (y) < (d)->bufend)
+#define assert_valid_behaviour(b) assert3(!(b & KEEPONDELETE) || !(b & NULLONDELETE), !(b & PREFERLEFT) || !(b & PREFERRIGHT), !(b & HOLDONNAVIGATE) || !(b & SLIDEONNAVIGATE));
 
 #ifdef NDEBUG
 #define assert1(a1)
@@ -58,15 +70,29 @@
 #endif
 
 typedef struct {
+	char **ptr;
+	char *newval; /* temporary value for updating */
+	int count; /* no times appears in multiset */
+	UpdateSetEntryBehaviour behaviour;
+} UpdateSetEntry;
+
+/* multiset so add and delete are symmetric */
+typedef struct {
+	size_t cap;
+	size_t count;
+	UpdateSetEntry *array;
+} UpdateSet;
+
+typedef struct {
 	char *bufstart;		/* buffer for storing chunks of the file */
 	char *bufend;	        /* one past the end of the buffer */
 	char *curleft;		/* one past the end of the upper section */
 	char *curright;         /* start of the lower section */
 	char *renderstart;      /* top left of the editor */
 	char *selanchor;
-	bool scrolldirty;
 	bool coldirty;
 	int col;
+	UpdateSet us;
 } Document;
 
 typedef struct {
@@ -94,24 +120,23 @@ memctchr(const char *s, int c, size_t n)
 	return count;
 }
 
-ssize_t
-grow(char **buf, size_t *len, size_t newlen)
+bool
+grow(void **buf, size_t *len, size_t newlen, size_t entrysize)
 {
-	assert5(buf, len, !*buf == !*len, !STUPIDLY_BIG(*len), !STUPIDLY_BIG(newlen));
+	assert6(buf, len, !*buf == !*len, !STUPIDLY_BIG(*len), !STUPIDLY_BIG(newlen), entrysize < 65536);
 	if (newlen > *len) {
 		*len = MAX(*len*2, newlen);
 		char *newbuf;
-		newbuf = realloc(*buf, *len);
+		newbuf = realloc(*buf, *len * entrysize);
 		if (!newbuf) {
 			fail();
 			fprintf(stderr, "could not realloc\n");
 			exit(1);
 		}
-		ssize_t shift = newbuf - *buf;
 		*buf = newbuf;
-		return shift;
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 void
@@ -135,7 +160,7 @@ readchar(const char *c, /*out*/ const char **next)
 		*next = c+1;
 		return r;
 	}
-	/* *c can't be 0b11111111 as this value can never appear in utf-8 */
+	assert((unsigned)*c != 255);
 	int bytecount = __builtin_clz(~*c & 255);
 	*next = c + bytecount;
 	assert_valid_read_range(&doc, c, c+bytecount);
@@ -230,56 +255,209 @@ dreadchar(const Document *d, const char *pos, const char **next, int dir)
 	return EOF; // should never be reached
 }
 
-ssize_t
+/* needed for cases where there's dependencies between pointers (eg. most shifts rely on d->curleft) */
+void
+usflip(UpdateSet *us)
+{
+	for (size_t i = 0; i < us->count; i++) {
+		*us->array[i].ptr = us->array[i].newval;
+		us->array[i].newval = NULL; /* help future me when I get 'round to debugging this mess */
+	}
+#ifdef DEBUG
+	for (size_t i = 0; i < us->count; i++) {
+		if (*us->array[i].ptr)
+			assert_valid_pos(*us->array[i].ptr);
+	}
+#endif
+}
+
+/* these two functions only need to be used on paramaters and local variables in functions that use non-const Document */
+void
+usadd(UpdateSet *us, char **ptr, UpdateSetEntryBehaviour behaviour)
+{
+	assert_valid_behaviour(behaviour);
+	for (size_t i = 0; i < us->count; i++) {
+		if (us->array[i].ptr == ptr) {
+			assert(behaviour == us->array[i].behaviour);
+			us->array[i].behaviour |= behaviour;
+			us->array[i].count++;
+			assert_valid_behaviour(us->array[i].behaviour);
+			return;
+		}
+	}
+	grow((void**)&us->array, &us->cap, us->count+1, sizeof(us->array[0]));
+	us->array[us->count].ptr = ptr;
+	us->array[us->count].count = 1;
+	us->array[us->count].behaviour = behaviour;
+	us->count++;
+}
+
+void
+usremv(UpdateSet *us, char **ptr)
+{
+	for (size_t i = 0; i < us->count; i++) {
+		if (us->array[i].ptr == ptr) {
+			us->array[i].count--;
+			if (us->array[i].count == 0) {
+				us->array[i] = us->array[us->count-1];
+				us->count--;
+				return;
+			}
+		}
+	}
+	fail();
+}
+
+void
+usinit(UpdateSet *us)
+{
+	us->count = 0;
+	us->cap = 50;
+	us->array = malloc(us->cap*sizeof(UpdateSetEntry));
+}
+
+void
+dupdateongrow(Document *d, char *newstart, char *newend)
+{
+	for (size_t i = 0; i < d->us.count; i++) {
+		char *u = *d->us.array[i].ptr, *v = NULL;
+		if (u != NULL) {
+			assert_valid_pos(d, u);
+			if (u <= d->curleft)
+				v = u + (newstart - d->bufstart);
+			else
+				v = u + (newend - d->bufend);
+			assert(v);
+		} else v = u;
+		d->us.array[i].newval = v;
+	}
+	usflip(&d->us);
+}
+
+void
+dupdateondelete(Document *d, char *rangestart, char *rangeend)
+{
+	assert_valid_write_range(d, rangestart, rangeend);
+	for (size_t i = 0; i < d->us.count; i++) {
+		char *u = *d->us.array[i].ptr, *v = NULL;
+		UpdateSetEntryBehaviour behaviour = d->us.array[i].behaviour;
+		if (u != NULL) {
+			assert_valid_pos(d, u);
+			if (d->curright <= rangestart) {
+				v =	u < d->curright ? u :
+					u < rangestart ? u + (rangeend - rangestart) :
+					u < rangeend ? ((behaviour & NULLONDELETE) ? NULL : rangeend) : u;
+			} else if (d->curleft >= rangeend) {
+				v = 	u < rangestart ? u :
+					u < rangeend ? ((behaviour & NULLONDELETE) ? NULL : rangestart) :
+					u <= d->curleft ? u - (rangeend - rangestart) : u;
+			} else {
+				assert3(rangestart < d->curleft, d->curleft < d->curright, d->curright < rangeend);
+				if (rangestart <= u && u < rangeend) {
+					v = 	(behaviour & NULLONDELETE) ? NULL :
+						(behaviour & PREFERRIGHT) ? rangeend : rangestart;
+				} else v = u;
+			}
+			assert((behaviour & NULLONDELETE) || v);
+		} else v = u;
+		d->us.array[i].newval = v;
+	}
+	usflip(&d->us);
+}
+
+void
+dupdateoninsert(Document *d, char *pos, size_t len)
+{
+	assert_valid_pos(d, pos);
+	for (size_t i = 0; i < d->us.count; i++) {
+		char *u = *d->us.array[i].ptr, *v;
+		UpdateSetEntryBehaviour behaviour = d->us.array[i].behaviour;
+		if (u != NULL) {
+			assert_valid_pos(d, u);
+			if (d->curright <= pos) {
+				if (d->curright <= u && u < pos) v = u - len;
+				else if (u == pos) v = (behaviour & PREFERRIGHT) ? u : u - len;
+				else v = u;
+			} else {
+				if (u == pos) v = (behaviour & PREFERRIGHT) ? u + len : u;
+				else if (pos < u && u <= d->curleft) v = u + len;
+				else v = u;
+			}
+			assert(v);
+		} else v = u;
+		d->us.array[i].newval = v;
+	}
+	usflip(&d->us);
+}
+
+void
+dupdateonnavigate(Document *d, char *newcursor)
+{
+	assert_valid_pos(d, newcursor);
+	for (size_t i = 0; i < d->us.count; i++) {
+		char *u = *d->us.array[i].ptr, *v;
+		UpdateSetEntryBehaviour behaviour = d->us.array[i].behaviour;
+		if (u != NULL) {
+			assert_valid_pos(d, u);
+			if (d->curright <= newcursor) {
+				if ((behaviour & SLIDEONNAVIGATE) && (u == d->curright || u == d->curleft)) {
+					v = u + (newcursor - d->curright);
+				} else {
+					v =	u <= d->curleft ? u :
+						u < newcursor ? u - (d->curright - d->curleft) : u;
+				}
+			} else {
+				if ((behaviour & SLIDEONNAVIGATE) && (u == d->curright || u == d->curleft)) {
+					v = u - (d->curleft - newcursor);
+				} else {
+					v =	u <= newcursor ? u :
+						u <= d->curleft ? u + (d->curright - d->curleft) : u;
+				}
+			}
+			assert(v);
+		} else v = u;
+		d->us.array[i].newval = v;
+	}
+	usflip(&d->us);
+}
+
+void
 dgrowgap(Document *d, size_t change)
 {
-	size_t targetsize = 4 + change + (d->curleft - d->bufstart) + (d->bufend - d->curright);
+	size_t targetsize = MAX_UTF8_BYTES + change + (d->curleft - d->bufstart) + (d->bufend - d->curright);
 	size_t oldsize = d->bufend - d->bufstart;
 	size_t newsize = oldsize;
-	ssize_t startshift = grow(&d->bufstart, &newsize, targetsize);
-	ssize_t endshift = (newsize - oldsize) + startshift;
-	if (startshift || endshift) {
-		if (d->selanchor) d->selanchor += d->selanchor < d->curleft ? startshift : endshift;
-		d->renderstart += d->renderstart < d->curleft ? startshift : endshift;
-		d->bufend += endshift;
-		d->curleft += startshift;
-		d->curright += endshift;
+	char *newbuf = d->bufstart;
+	if (grow((void**)&newbuf, &newsize, targetsize, 1)) {
+		dupdateongrow(d, newbuf, newbuf + newsize);
 	}
-	return startshift;
 }
 
-char *
-dinsert(Document *d, char *pos, char *insertstart, size_t len)
+void
+dinsert(Document *d, char *pos, char *insertstr, size_t len)
 {
-	pos += dgrowgap(d, len);
-	char **toupdate[] = { &d->renderstart, &d->selanchor, NULL };
+	usadd(&d->us, &pos, 0);
+	dgrowgap(d, len);
 	if (pos <= d->curleft) {
 		memmove(pos + len, pos, d->curleft - pos);
-		for (char ***p = toupdate; *p; p++) {
-			if (pos <= **p && **p <= d->curleft) **p += len;
-		}
-		d->curleft += len;
-		memcpy(pos, insertstart, len);
-		d->coldirty = true;
-		return pos + len;
+		memcpy(pos, insertstr, len);
 	} else {
 		memmove(d->curright - len, d->curright, pos - d->curright);
-		for (char ***p = toupdate; *p; p++) {
-			if (d->curright <= **p && **p < pos) **p -= len;
-		}
-		d->curright -= len;
-		memcpy(pos - len, insertstart, len);
-		d->coldirty = true;
-		return pos;
+		memcpy(pos - len, insertstr, len);
 	}
+	d->coldirty = true;
+	dupdateoninsert(d, pos, len);
+	usremv(&d->us, &pos);
 }
 
-char *
+void
 dinsertchar(Document *d, char *pos, Rune r)
 {
+	usadd(&d->us, &pos, 0);
 	char buf[MAX_UTF8_BYTES];
 	char *end = writechar(buf, r);
-	return dinsert(d, pos, buf, end - buf);
+	dinsert(d, pos, buf, end - buf);
+	usremv(&d->us, &pos);
 }
 
 bool
@@ -401,59 +579,27 @@ dwalkrow(const Document *d, const char *pos, int change)
 void
 dnavigate(Document *d, char *pos, bool isselect)
 {
-	if (pos < d->curleft) {
-		size_t change = d->curleft - pos;
-		d->scrolldirty |= !!memchr(pos, '\n', change);
-		memmove(d->curright - change, pos, change);
-		d->curright -= change;
-		d->curleft -= change;
-		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
-			d->selanchor += d->curright - d->curleft;
-		} else if (isselect && d->selanchor == NULL) {
-			d->selanchor = d->curright + change;
-		}
-	} else if (pos > d->curright) {
-		size_t change = pos - d->curright;
-		d->scrolldirty |= !!memchr(d->curright, '\n', change);
-		memmove(d->curleft, d->curright, change);
-		d->curright += change;
-		d->curleft += change;
-		if (isselect && d->curleft <= d->selanchor && d->selanchor < d->curright) {
-			d->selanchor -= d->curright - d->curleft;
-		} else if (isselect && d->selanchor == NULL) {
-			d->selanchor = d->curleft - change;
-		}
+	if (isselect && !d->selanchor) d->selanchor = d->curright;
+	else if (!isselect) d->selanchor = NULL;
+	if (pos <= d->curleft) {
+		memmove(d->curright - (d->curleft - pos), pos, d->curleft - pos);
+	} else if (pos >= d->curright) {
+		memmove(d->curleft, d->curright, pos - d->curright);
 	}
-	if (!isselect) d->selanchor = NULL;
+	dupdateonnavigate(d, pos);
 	d->coldirty = true; /* it's the caller's responsibility to correct this if moving vertically */
 }
 
 void
 ddeleterange(Document *d, char *left, char *right)
 {
-	char **toupdate[] = { &d->renderstart, &d->selanchor, NULL };
 	if (left <= d->curleft && d->curright <= right) {
-		if (left >= d->renderstart || right <= d->renderstart) d->scrolldirty = true;
-		for (char ***p = toupdate; *p; p++) {
-			if (left <= **p && **p < right) **p = left;
-		}
-		d->curleft = left;
-		d->curright = right;
 	} else if (right <= d->curleft) {
 		memmove(left, right, d->curleft - right);
-		for (char ***p = toupdate; *p; p++) {
-			if (left <= **p && **p < right) **p = left;
-			if (right < **p && **p <= d->curleft) **p -= right - left;
-		}
-		d->curleft -= right - left;
 	} else {
 		memmove(right - (left - d->curright), d->curright, left - d->curright);
-		for (char ***p = toupdate; *p; p++) {
-			if (left <= **p && **p <= right) **p = right;
-			if (d->curright <= **p && **p <= d->curleft) **p += right - left;
-		}
-		d->curright += right - left;
 	}
+	dupdateondelete(d, left, right);
 	d->coldirty = true;
 }
 
@@ -466,16 +612,6 @@ ddeletesel(Document *d)
 	else
 		ddeleterange(d, d->curright, d->selanchor);
 	d->selanchor = NULL;
-}
-
-void
-dwrite(Document *d, Rune r)
-{
-	if (d->selanchor) ddeletesel(d);
-	dgrowgap(d, MAX_UTF8_BYTES);
-	d->curleft = writechar(d->curleft, r);
-	d->selanchor = NULL;
-	assert(d->curleft < d->curright);
 }
 
 void
@@ -499,14 +635,20 @@ einit()
 	doc.curright = doc.bufend;
 	doc.renderstart = doc.bufstart;
 	doc.selanchor = NULL;
-	doc.scrolldirty = true;
 	doc.coldirty = true;
+	usinit(&doc.us);
+	usadd(&doc.us, &doc.bufstart, PREFERLEFT);
+	usadd(&doc.us, &doc.bufend, PREFERRIGHT);
+	usadd(&doc.us, &doc.curleft, PREFERRIGHT | SLIDEONNAVIGATE);
+	usadd(&doc.us, &doc.curright, PREFERLEFT | SLIDEONNAVIGATE);
+	usadd(&doc.us, &doc.selanchor, 0);
+	usadd(&doc.us, &doc.renderstart, 0);
 }
 
 void
 ewrite(Rune r)
 {
-	dwrite(&doc, r);
+	dinsertchar(&doc, doc.curleft, r);
 }
 
 void
@@ -552,16 +694,19 @@ changeindent(const Arg *arg)
 {
 	char *selleft = doc.selanchor ? MIN(doc.selanchor, doc.curleft) : doc.curleft;
 	char *selright = doc.selanchor ? MAX(doc.selanchor, doc.curleft) : doc.curleft;
+	usadd(&doc.us, &selleft, 0);
+	usadd(&doc.us, &selright, 0);
 	const char *dmy;
 
-	for (char* p = dwalkrow(&doc, selleft, 0); p < doc.bufend && p <= selright; p = dwalkrow(&doc, p, +1)) {
-		if (arg->i > 0) p = dinsertchar(&doc, p, '\t');
-		else if (dreadchar(&doc, p, &dmy, +1) == '\t') {
-			char *q = p < doc.curright ? p : p - 1;
-			ddeleterange(&doc, p, p + 1);
-			p = q;
-		}
+	char *p = dwalkrow(&doc, selleft, 0);
+	usadd(&doc.us, &p, 0);
+	for (; p < doc.bufend && p <= selright; p = dwalkrow(&doc, p, +1)) {
+		if (arg->i > 0) dinsertchar(&doc, p, '\t');
+		else if (dreadchar(&doc, p, &dmy, +1) == '\t') ddeleterange(&doc, p, p + 1);
 	}
+	usremv(&doc.us, &p);
+	usremv(&doc.us, &selleft);
+	usremv(&doc.us, &selright);
 }
 
 void
@@ -659,6 +804,6 @@ void
 newline(const Arg *arg)
 {
 	(void)arg;
-	dwrite(&doc, '\n');
+	dinsertchar(&doc, doc.curleft, '\n');
 }
 
