@@ -1578,7 +1578,7 @@ run(void)
 					(handler[ev.type])(&ev);
 			}
 
-			draw();
+			redraw();
 			XFlush(xw.dpy);
 
 			if (xev && !FD_ISSET(xfd, &rfd))

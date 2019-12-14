@@ -28,14 +28,6 @@
  #include <libutil.h>
 #endif
 
-/* Arbitrary sizes */
-#define UTF_INVALID   0xFFFD
-#define UTF_SIZ       4
-#define ESC_BUF_SIZ   (128*UTF_SIZ)
-#define ESC_ARG_SIZ   16
-#define STR_BUF_SIZ   ESC_BUF_SIZ
-#define STR_ARG_SIZ   ESC_ARG_SIZ
-
 /* macros */
 #define IS_SET(flag)		((term.mode & (flag)) != 0)
 #define ISCONTROLC0(c)		(c <= 0x1f || (c) == '\177')
@@ -52,57 +44,11 @@ enum cursor_movement {
 	CURSOR_LOAD
 };
 
-enum cursor_state {
-	CURSOR_DEFAULT  = 0,
-	CURSOR_WRAPNEXT = 1,
-	CURSOR_ORIGIN   = 2
-};
-
-enum charset {
-	CS_GRAPHIC0,
-	CS_GRAPHIC1,
-	CS_UK,
-	CS_USA,
-	CS_MULTI,
-	CS_GER,
-	CS_FIN
-};
-
-enum escape_state {
-	ESC_START      = 1,
-	ESC_CSI        = 2,
-	ESC_STR        = 4,  /* OSC, PM, APC */
-	ESC_ALTCHARSET = 8,
-	ESC_STR_END    = 16, /* a final string was encountered */
-	ESC_TEST       = 32, /* Enter in test mode */
-	ESC_UTF8       = 64,
-	ESC_DCS        =128,
-};
-
 typedef struct {
 	Glyph attr; /* current char attributes */
 	int x;
 	int y;
-	char state;
 } TCursor;
-
-typedef struct {
-	int mode;
-	int type;
-	int snap;
-	/*
-	 * Selection variables:
-	 * nb – normalized coordinates of the beginning of the selection
-	 * ne – normalized coordinates of the end of the selection
-	 * ob – original coordinates of the beginning of the selection
-	 * oe – original coordinates of the end of the selection
-	 */
-	struct {
-		int x, y;
-	} nb, ne, ob, oe;
-
-	int alt;
-} Selection;
 
 /* Internal representation of the screen */
 typedef struct {
@@ -110,55 +56,22 @@ typedef struct {
 	int col;      /* nb col */
 	Line *line;   /* screen */
 	Line *alt;    /* alternate screen */
-	int *dirty;   /* dirtyness of lines */
 	TCursor c;    /* cursor */
 	int ocx;      /* old cursor col */
 	int ocy;      /* old cursor row */
-	int top;      /* top    scroll limit */
-	int bot;      /* bottom scroll limit */
 	int mode;     /* terminal mode flags */
-	int esc;      /* escape state flags */
-	char trantbl[4]; /* charset table translation */
-	int charset;  /* current charset */
-	int icharset; /* selected charset for sequence */
-	int *tabs;
 } Term;
-
-/* CSI Escape sequence structs */
-/* ESC '[' [[ [<priv>] <arg> [;]] <mode> [<mode>]] */
-typedef struct {
-	char buf[ESC_BUF_SIZ]; /* raw string */
-	size_t len;            /* raw string length */
-	char priv;
-	int arg[ESC_ARG_SIZ];
-	int narg;              /* nb of args */
-	char mode[2];
-} CSIEscape;
-
-/* STR Escape sequence structs */
-/* ESC type [[ [<priv>] <arg> [;]] <mode>] ESC '\' */
-typedef struct {
-	char type;             /* ESC type ... */
-	char *buf;             /* allocated raw string */
-	size_t siz;            /* allocation size */
-	size_t len;            /* raw string length */
-	char *args[STR_ARG_SIZ];
-	int narg;              /* nb of args */
-} STREscape;
 
 static void tclearregion(int, int, int, int);
 static void tcursor(int);
 static void tmoveto(int, int);
 static void treset(void);
-static void tsetdirt(int, int);
 static void tswapscreen(void);
-static void tfulldirt(void);
 
 static void drawregion(int, int, int, int);
 
 /* Globals */
 static Term term;
-static int cmdfd;
 
 void *
 xmalloc(size_t len)
@@ -216,24 +129,6 @@ tattrset(int attr)
 }
 
 void
-tsetdirt(int top, int bot)
-{
-	int i;
-
-	LIMIT(top, 0, term.row-1);
-	LIMIT(bot, 0, term.row-1);
-
-	for (i = top; i <= bot; i++)
-		term.dirty[i] = 1;
-}
-
-void
-tfulldirt(void)
-{
-	tsetdirt(0, term.row-1);
-}
-
-void
 tcursor(int mode)
 {
 	static TCursor c[2];
@@ -256,16 +151,9 @@ treset(void)
 		.mode = ATTR_NULL,
 		.fg = defaultfg,
 		.bg = defaultbg
-	}, .x = 0, .y = 0, .state = CURSOR_DEFAULT};
+	}, .x = 0, .y = 0};
 
-	memset(term.tabs, 0, term.col * sizeof(*term.tabs));
-	for (i = tabspaces; i < (uint)term.col; i += tabspaces)
-		term.tabs[i] = 1;
-	term.top = 0;
-	term.bot = term.row - 1;
 	term.mode = 0;
-	memset(term.trantbl, CS_USA, sizeof(term.trantbl));
-	term.charset = 0;
 
 	for (i = 0; i < 2; i++) {
 		tmoveto(0, 0);
@@ -291,24 +179,13 @@ tswapscreen(void)
 	term.line = term.alt;
 	term.alt = tmp;
 	term.mode ^= MODE_ALTSCREEN;
-	tfulldirt();
 }
 
 void
 tmoveto(int x, int y)
 {
-	int miny, maxy;
-
-	if (term.c.state & CURSOR_ORIGIN) {
-		miny = term.top;
-		maxy = term.bot;
-	} else {
-		miny = 0;
-		maxy = term.row - 1;
-	}
-	term.c.state &= ~CURSOR_WRAPNEXT;
 	term.c.x = LIMIT(x, 0, term.col-1);
-	term.c.y = LIMIT(y, miny, maxy);
+	term.c.y = LIMIT(y, 0, term.row-1);
 }
 
 void
@@ -328,7 +205,6 @@ tclearregion(int x1, int y1, int x2, int y2)
 	LIMIT(y2, 0, term.row-1);
 
 	for (y = y1; y <= y2; y++) {
-		term.dirty[y] = 1;
 		for (x = x1; x <= x2; x++) {
 			gp = &term.line[y][x];
 			gp->fg = term.c.attr.fg;
@@ -340,20 +216,11 @@ tclearregion(int x1, int y1, int x2, int y2)
 }
 
 void
-sendbreak(const Arg *arg)
-{
-	(void)arg;
-	if (tcsendbreak(cmdfd, 0))
-		perror("Error sending break");
-}
-
-void
 tresize(int col, int row)
 {
 	int i;
 	int minrow = MIN(row, term.row);
 	int mincol = MIN(col, term.col);
-	int *bp;
 	TCursor c;
 
 	if (col < 1 || row < 1) {
@@ -384,8 +251,6 @@ tresize(int col, int row)
 	/* resize to new height */
 	term.line = xrealloc(term.line, row * sizeof(Line));
 	term.alt  = xrealloc(term.alt,  row * sizeof(Line));
-	term.dirty = xrealloc(term.dirty, row * sizeof(*term.dirty));
-	term.tabs = xrealloc(term.tabs, col * sizeof(*term.tabs));
 
 	/* resize each row to new width, zero-pad if needed */
 	for (i = 0; i < minrow; i++) {
@@ -398,21 +263,9 @@ tresize(int col, int row)
 		term.line[i] = xmalloc(col * sizeof(Glyph));
 		term.alt[i] = xmalloc(col * sizeof(Glyph));
 	}
-	if (col > term.col) {
-		bp = term.tabs + term.col;
-
-		memset(bp, 0, sizeof(*term.tabs) * (col - term.col));
-		while (--bp > term.tabs && !*bp)
-			/* nothing */ ;
-		for (bp += tabspaces; bp < term.tabs + col; bp += tabspaces)
-			*bp = 1;
-	}
 	/* update terminal size */
 	term.col = col;
 	term.row = row;
-	/* reset scrolling region */
-	term.top = 0;
-	term.bot = row-1;
 	/* make use of the LIMIT in tmoveto */
 	tmoveto(term.c.x, term.c.y);
 	/* Clearing both screens (it makes dirty all lines) */
@@ -441,19 +294,14 @@ drawregion(int x1, int y1, int x2, int y2)
 {
 	int y;
 	for (y = y1; y < y2; y++) {
-		if (!term.dirty[y])
-			continue;
-
-		term.dirty[y] = 0;
 		xdrawline(term.line[y], x1, y, x2);
 	}
 }
 
 void
-draw(void)
+redraw(void)
 {
 	edraw(term.line, term.col, term.row, &term.c.x, &term.c.y);
-	tfulldirt();
 	
 	int cx = term.c.x;
 
@@ -474,11 +322,4 @@ draw(void)
 	term.ocx = cx, term.ocy = term.c.y;
 	xfinishdraw();
 	xximspot(term.ocx, term.ocy);
-}
-
-void
-redraw(void)
-{
-	tfulldirt();
-	draw();
 }

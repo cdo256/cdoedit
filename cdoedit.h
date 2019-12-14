@@ -82,7 +82,6 @@ typedef union {
 
 void die(const char *, ...);
 void redraw(void);
-void draw(void);
 
 void sendbreak(const Arg *);
 
