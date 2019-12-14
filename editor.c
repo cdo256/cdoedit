@@ -110,6 +110,7 @@ static Rune utfmax[UTF_SIZ + 1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10FFFF};
 static Document doc;
 char *scratchbuf = NULL;
 size_t scratchlen = 0;
+char* filename = NULL;
 
 /* I previously had an overly complex unrolled version of this. */
 /* For simplicity and since modern compilers can optimize vector operations better than I can,
@@ -687,6 +688,7 @@ einit()
 void
 ewrite(Rune r)
 {
+	if (doc.selanchor) ddeletesel(&doc);
 	dinsertchar(&doc, doc.curleft, r);
 }
 
@@ -703,10 +705,11 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 		bool endofline = false;
 		bool tab = false;
 		for (int c = 0; c < colc; c++) {
-			if (0 == POSCMP(&doc, p, doc.selanchor)) insel ^= 1; 
+			if (0 == POSCMP(&doc, p, doc.selanchor) && firstpass) insel ^= 1;
 			if (0 == POSCMP(&doc, p, doc.curleft) && firstpass) {
 				*currow = endofline ? r+1 : r;
 				*curcol = endofline ? 0 : c;
+				if (doc.selanchor) insel ^= 1;
 			}
 			if (0 == POSCMP(&doc, p, doc.bufend) || endofline || tab) {
 				g.u = ' ';
@@ -728,8 +731,8 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 				g.u = ' ';
 			}
 			g.mode = 0;
-			g.fg = 1;
-			g.bg = 0;
+			g.fg = insel ? 0 : 1;
+			g.bg = insel ? 1 : 0;
 			line[r][c] = g;
 		}
 	}
@@ -852,3 +855,4 @@ newline(const Arg *arg)
 	(void)arg;
 	dinsertchar(&doc, doc.curleft, '\n');
 }
+
