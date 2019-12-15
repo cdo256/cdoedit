@@ -13,6 +13,7 @@
 #define MAX_LINE_LEN 1024
 #define UTF_SIZ 4
 #define UTF_INVALID 0xFFFD
+#define ERROR_BUF_LEN 8192
 
 typedef enum {
 	KEEPONDELETE = 1,
@@ -111,6 +112,7 @@ static Document doc;
 char *scratchbuf = NULL;
 size_t scratchlen = 0;
 char* filename = "testout";
+char errorbuf[ERROR_BUF_LEN];
 
 /* I previously had an overly complex unrolled version of this. */
 /* For simplicity and since modern compilers can optimize vector operations better than I can,
@@ -154,6 +156,18 @@ userwarning(const char *s, ...)
 	va_end(va); 
 	fail();
 }
+
+void
+printsyserror(const char *str, ...)
+{
+	va_list ap;
+	va_start(ap, str);
+	vsnprintf(errorbuf, ERROR_BUF_LEN, str, ap);
+	va_end(ap);
+	errorbuf[ERROR_BUF_LEN-1] = '\0';
+	perror(errorbuf);
+}
+
 
 size_t
 utf8validate(Rune *u, size_t i)
@@ -348,12 +362,17 @@ usremv(UpdateSet *us, char **ptr)
 	fail();
 }
 
-void
+bool
 usinit(UpdateSet *us)
 {
 	us->count = 0;
 	us->cap = 50;
 	us->array = malloc(us->cap*sizeof(UpdateSetEntry));
+	if (!us->array) {
+		us->cap = 0;
+		return false;
+	}
+	return true;
 }
 
 void
@@ -666,23 +685,76 @@ dscroll(Document *d, int rowc)
 	}
 }
 
+/* content must appear at end of buffer */
+bool
+dinit(Document *d, char *buf, size_t buflen, size_t contentlen)
+{
+	d->bufstart = buf;
+	d->bufend = buf + buflen;
+	d->curleft = buf;
+	d->curright = (buf + buflen) - contentlen;
+	d->renderstart = buf;
+	d->selanchor = NULL;
+	d->coldirty = true;
+	if (!usinit(&d->us)) return false;
+	usadd(&d->us, &d->bufstart, PREFERLEFT);
+	usadd(&d->us, &d->bufend, PREFERRIGHT);
+	usadd(&d->us, &d->curleft, PREFERRIGHT | SLIDEONNAVIGATE);
+	usadd(&d->us, &d->curright, PREFERLEFT | SLIDEONNAVIGATE);
+	usadd(&d->us, &d->selanchor, 0);
+	usadd(&d->us, &d->renderstart, 0);
+	return true;
+}
+
+void
+dfree(/* move */ Document *d)
+{
+	free(d->bufstart);
+	for (size_t i = 0; i < d->us.count; i++) {
+		*d->us.array[i].ptr = NULL;
+	}
+	free(d->us.array);
+	d->us.cap = 0;
+	d->us.count = 0;
+}
+
+void
+dmove(Document *dst, /* move */ Document *src)
+{
+	*dst = *src;
+	for (size_t i = 0; i < dst->us.count; i++) {
+		/* this is the point where you wish you wish you were programming in asm
+		   so you didn't have to deal with c's retarded pointer arithmetic */
+		/* cast everything to char *'s then cast back before assigning in case
+		   we're working on a machine with unaliged pointers */
+		dst->us.array[i].ptr = (char **)((char *)dst->us.array[i].ptr + ((char *)dst - (char *)src));
+	}
+}
+
+bool
+dreinit(Document *old, char *buf, size_t buflen, size_t contentlen)
+{
+	Document new;
+	if (!dinit(&new, buf, buflen, contentlen)) {
+		return false;
+	}
+	dfree(old);
+	dmove(old, &new);
+	return true;
+}
+
 void
 einit()
 {
-	doc.bufstart = malloc(10);
-	doc.bufend = doc.bufstart + 10;
-	doc.curleft = doc.bufstart;
-	doc.curright = doc.bufend;
-	doc.renderstart = doc.bufstart;
-	doc.selanchor = NULL;
-	doc.coldirty = true;
-	usinit(&doc.us);
-	usadd(&doc.us, &doc.bufstart, PREFERLEFT);
-	usadd(&doc.us, &doc.bufend, PREFERRIGHT);
-	usadd(&doc.us, &doc.curleft, PREFERRIGHT | SLIDEONNAVIGATE);
-	usadd(&doc.us, &doc.curright, PREFERLEFT | SLIDEONNAVIGATE);
-	usadd(&doc.us, &doc.selanchor, 0);
-	usadd(&doc.us, &doc.renderstart, 0);
+	/* if we can't initialise the document then it's probably best we give up entirely */
+	char *buf = malloc(10);
+	if (!buf) {
+		printsyserror("Could not initialize the document");
+		exit(1);
+	}
+	if (!dinit(&doc, buf, 10, 0)) {
+		exit(1);
+	}
 }
 
 void
@@ -857,27 +929,88 @@ newline(const Arg *arg)
 }
 
 bool
-dwritefile(const Document *d, char *path)
+dwritefile(const Document *d, const char *path)
 {
-	bool ret = true;
 	size_t leftlen = d->curleft - d->bufstart;
 	size_t rightlen = d->bufend - d->curright;
 	size_t len = leftlen + rightlen;
 	char *buf = malloc(len);
-	if (!buf) ret = false;
+	if (!buf) {
+		printsyserror("Could not write to file \"%s\", out of memory", path);
+		return false;
+	}
 	memcpy(buf, d->bufstart, leftlen);
 	memcpy(buf+leftlen, d->curright, rightlen);
 	FILE *file = fopen(path, "w");
-	if (!file) ret = false;
-	else if (!fwrite(buf, 1, len, file)) ret = false;
+	if (!file) {
+		printsyserror("Could not open file \"%s\" for writing", path);
+		free(buf);
+		return false;
+	}
+	if (!fwrite(buf, 1, len, file)) {
+		printsyserror("Could open but not write to file \"%s\"", path);
+		free(buf);
+		fclose(file);
+		return false;
+	}
+	free(buf);
 	fclose(file);
-	return ret;
+	return true;
+}
+
+bool
+ereadfromfile(const char *path)
+{
+	FILE *file = fopen(path, "r");
+	if (!file) {
+		printsyserror("Could not open file \"%s\" for reading", path);
+		return false;
+	}
+	if (-1 == fseek(file, 0, SEEK_END)) {
+		printsyserror("Cannot seek file \"%s\"", path);
+		fclose(file);
+		return false;
+	}
+	size_t len = ftell(file);
+	if (!~len) {
+		printsyserror("Cannot get length of file \"%s\"", path);
+		fclose(file);
+		return false;
+	}
+	rewind(file);
+	size_t alloclen = len+UTF_SIZ;
+	char *buf = malloc(alloclen);
+	if (!buf) {
+		printsyserror("Could not allocate new buffer to read file \"%s\"", path);
+		fclose(file);
+		return false;
+	}
+	if (len > fread(buf+(alloclen-len), 1, len, file)) {
+		printsyserror("Could open, and get length of the file but could not read file \"%s\"", path);
+		free(buf);
+		fclose(file);
+		return false;
+	}
+	fclose(file);
+	if (!dreinit(&doc, buf, alloclen, len)) {
+		fprintf(stderr, "Could open and read document but could not init the document\n");
+		free(buf);
+		return false;
+	}
+	return true;
 }
 
 void
 save(const Arg *arg)
 {
 	(void)arg;
-	//if (!filename) saveas(arg);
+	/* error is outputted by the function so we're covered */
 	dwritefile(&doc, filename);
+}
+
+void
+load(const Arg *arg)
+{
+	(void)arg;
+	ereadfromfile(filename);
 }

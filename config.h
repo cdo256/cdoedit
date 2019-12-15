@@ -160,6 +160,8 @@ static Shortcut shortcuts[] = {
 	{ CTRL,                 XK_minus,       zoom,           {.f = -1} },
 	{ CTRL,                 'S',            save,           {.i =  0} },
 	{ CTRL,                 's',            save,           {.i =  0} },
+	{ CTRL,                 'R',            load,           {.i =  0} },
+	{ CTRL,                 'r',            load,           {.i =  0} },
 };
 
 /*
