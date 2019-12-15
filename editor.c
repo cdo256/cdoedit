@@ -790,9 +790,11 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 				g.u = dreadchar(&doc, p, &p, +1);
 				firstpass = true;
 			}
-			if (0 == POSCMP(&doc, p, doc.curleft) && tab && (c & 7) == 0) {
-				*currow = r;
-				*curcol = c;
+			if (tab && (c & 7) == 0) {
+				if (0 == POSCMP(&doc, p, doc.curleft)) {
+					*currow = r;
+					*curcol = c;
+				}
 				tab = false;
 			}
 			if (g.u == '\n') {

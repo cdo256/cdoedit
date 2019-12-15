@@ -222,11 +222,8 @@ static char *usedfont = NULL;
 static double usedfontsize = 0;
 static double defaultfontsize = 0;
 
-static char **opt_cmd  = NULL;
-static char *opt_embed = NULL;
-static char *opt_font  = NULL;
 static char *opt_line  = NULL;
-static char *opt_title = NULL;
+static char *title = NULL;
 
 void
 clipcopy(const Arg *dummy)
@@ -842,7 +839,7 @@ xinit(int cols, int rows)
 	if (!FcInit())
 		die("could not init fontconfig.\n");
 
-	usedfont = (opt_font == NULL)? font : opt_font;
+	usedfont = font;
 	xloadfonts(usedfont, 0);
 
 	/* colors */
@@ -866,8 +863,7 @@ xinit(int cols, int rows)
 		| ButtonMotionMask | ButtonPressMask | ButtonReleaseMask;
 	xw.attrs.colormap = xw.cmap;
 
-	if (!(opt_embed && (parent = strtol(opt_embed, NULL, 0))))
-		parent = XRootWindow(xw.dpy, xw.scr);
+	parent = XRootWindow(xw.dpy, xw.scr);
 	xw.win = XCreateWindow(xw.dpy, parent, xw.l, xw.t,
 			win.w, win.h, 0, XDefaultDepth(xw.dpy, xw.scr), InputOutput,
 			xw.vis, CWBackPixel | CWBorderPixel | CWBitGravity
@@ -1292,7 +1288,7 @@ void
 xsettitle(char *p)
 {
 	XTextProperty prop;
-	DEFAULT(p, opt_title);
+	DEFAULT(p, title);
 
 	Xutf8TextListToTextProperty(xw.dpy, &p, 1, XUTF8StringStyle,
 			&prop);
@@ -1608,8 +1604,10 @@ run(void)
 void
 usage(void)
 {
-	die("usage: %s filename", argv0);
+	die("usage: %s [-l lineno] filename", argv0);
 }
+
+extern char* filename;
 
 int
 main(int argc, char *argv[])
@@ -1629,11 +1627,11 @@ main(int argc, char *argv[])
 		usage();
 	} ARGEND;
 
-	if (argc > 0) /* eat all remaining arguments */
-		opt_cmd = argv;
+	if (argc == 1)
+		filename = strdup(argv[0]);
+	else usage();
 
-	if (!opt_title)
-		opt_title = (opt_line || !opt_cmd) ? "cdoedit" : opt_cmd[0];
+	title = (opt_line || !filename) ? "cdoedit" : filename;
 
 	setlocale(LC_CTYPE, "");
 	XSetLocaleModifiers("");
