@@ -1641,6 +1641,10 @@ main(int argc, char *argv[])
 	xinit(cols, rows);
 	xsetenv();
 	einit();
+	{
+		Arg arg = { .i = 0 };
+		load(&arg);
+	}
 	run();
 
 	return 0;
