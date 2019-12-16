@@ -488,6 +488,7 @@ dgrowgap(Document *d, size_t change)
 	size_t newsize = oldsize;
 	char *newbuf = d->bufstart;
 	if (grow((void**)&newbuf, &newsize, targetsize, 1)) {
+		memmove(newbuf + newsize - (d->bufend - d->curright), newbuf + (d->curright - d->bufstart), d->bufend - d->curright);
 		dupdateongrow(d, newbuf, newbuf + newsize);
 	}
 }
