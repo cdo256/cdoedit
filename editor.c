@@ -794,7 +794,7 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 			if (tab && (c & 7) == 0) {
 				if (0 == POSCMP(&doc, p, doc.curleft)) {
 					*currow = r;
-					*curcol = c;
+					*curcol = c+1;
 				}
 				tab = false;
 			}
