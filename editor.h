@@ -5,6 +5,7 @@
 void einit();
 void ewrite(Rune r);
 void edraw(Line *line, int colc, int rowc, int *curcol, int *currow);
+void ejumptoline(long line);
 
 void changeindent(const Arg *);
 void deletechar(const Arg *);
@@ -22,3 +23,4 @@ void new(const Arg *);
 void load(const Arg *);
 void save(const Arg *);
 void saveas(const Arg *);
+void jumptolien(const Arg *);

@@ -1017,3 +1017,10 @@ load(const Arg *arg)
 	(void)arg;
 	ereadfromfile(filename);
 }
+
+void
+ejumptoline(long line)
+{
+	char* pos = dwalkrow(&doc, doc.bufstart, line-1);
+	dnavigate(&doc, pos, false);
+}

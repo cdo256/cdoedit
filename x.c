@@ -1631,7 +1631,7 @@ main(int argc, char *argv[])
 		filename = strdup(argv[0]);
 	else usage();
 
-	title = (opt_line || !filename) ? "cdoedit" : filename;
+	title = filename ? strdup(filename) : strdup("cdoedit");
 
 	setlocale(LC_CTYPE, "");
 	XSetLocaleModifiers("");
@@ -1644,6 +1644,13 @@ main(int argc, char *argv[])
 	{
 		Arg arg = { .i = 0 };
 		load(&arg);
+	}
+	if (opt_line) {
+		long line;
+		if (1 != sscanf(opt_line, "%ld", &line) || line <= 0) {
+			die("the line number is not a valid integer.");
+		}
+		ejumptoline(line);
 	}
 	run();
 
