@@ -16,12 +16,13 @@
 #define ERROR_BUF_LEN 8192
 
 typedef enum {
-	KEEPONDELETE = 1,
-	NULLONDELETE = 2,
-	PREFERLEFT = 4,
-	PREFERRIGHT = 8,
-	HOLDONNAVIGATE = 16,
-	SLIDEONNAVIGATE = 32,
+	LEFTONDELETE = 1,
+	RIGHTONDELETE = 2,
+	NULLONDELETE = 4,
+	LEFTONINSERT = 8,
+	RIGHTONINSERT = 16,
+	HOLDONNAVIGATE = 32,
+	SLIDEONNAVIGATE = 64,
 } UpdateSetEntryBehaviour;
 
 #define SIGN(a) ((a)>0 ? +1 : (a)<0 ? -1 : 0)
@@ -39,7 +40,7 @@ typedef enum {
 #define assert_valid_read_range(d, x, y) \
 	assert4((x) <= (y), (d)->bufstart <= (x), (y) <= (d)->curleft || (d)->curright <= (x), (y) <= (d)->bufend)
 #define assert_valid_write_range(d, x,y) assert2((d)->bufstart <= (x), (y) <= (d)->bufend)
-#define assert_valid_behaviour(b) assert3(!(b & KEEPONDELETE) || !(b & NULLONDELETE), !(b & PREFERLEFT) || !(b & PREFERRIGHT), !(b & HOLDONNAVIGATE) || !(b & SLIDEONNAVIGATE));
+#define assert_valid_behaviour(b) assert3(!(b & LEFTONDELETE) || !(b & RIGHTONDELETE) || !(b & NULLONDELETE), !(b & LEFTONINSERT) || !(b & RIGHTONINSERT), !(b & HOLDONNAVIGATE) || !(b & SLIDEONNAVIGATE));
 
 #ifdef NDEBUG
 #define assert1(a1)
@@ -412,9 +413,9 @@ dupdateondelete(Document *d, char *rangestart, char *rangeend)
 					u <= d->curleft ? u - (rangeend - rangestart) : u;
 			} else {
 				assert3(rangestart <= d->curleft, d->curleft < d->curright, d->curright <= rangeend);
-				if (rangestart <= u && u < rangeend) {
+				if (POSCMP(d, rangestart, u) <= 0 && POSCMP(d, u, rangeend) < 0) {
 					v = 	(behaviour & NULLONDELETE) ? NULL :
-						(behaviour & PREFERRIGHT) ? rangeend : rangestart;
+						(behaviour & RIGHTONDELETE) ? rangeend : rangestart;
 				} else v = u;
 			}
 			assert((behaviour & NULLONDELETE) || v);
@@ -435,10 +436,10 @@ dupdateoninsert(Document *d, char *pos, size_t len)
 			assert_valid_pos(d, u);
 			if (d->curright <= pos) {
 				if (d->curright <= u && u < pos) v = u - len;
-				else if (u == pos) v = (behaviour & PREFERRIGHT) ? u : u - len;
+				else if (u == pos) v = (behaviour & RIGHTONINSERT) ? u : u - len;
 				else v = u;
 			} else {
-				if (u == pos) v = (behaviour & PREFERRIGHT) ? u + len : u;
+				if (u == pos) v = (behaviour & RIGHTONINSERT) ? u + len : u;
 				else if (pos < u && u <= d->curleft) v = u + len;
 				else v = u;
 			}
@@ -698,10 +699,10 @@ dinit(Document *d, char *buf, size_t buflen, size_t contentlen)
 	d->selanchor = NULL;
 	d->coldirty = true;
 	if (!usinit(&d->us)) return false;
-	usadd(&d->us, &d->bufstart, PREFERLEFT);
-	usadd(&d->us, &d->bufend, PREFERRIGHT);
-	usadd(&d->us, &d->curleft, PREFERRIGHT | SLIDEONNAVIGATE);
-	usadd(&d->us, &d->curright, PREFERLEFT | SLIDEONNAVIGATE);
+	usadd(&d->us, &d->bufstart, LEFTONINSERT | LEFTONDELETE);
+	usadd(&d->us, &d->bufend, RIGHTONINSERT | RIGHTONDELETE);
+	usadd(&d->us, &d->curleft, RIGHTONINSERT | LEFTONDELETE | SLIDEONNAVIGATE);
+	usadd(&d->us, &d->curright, LEFTONINSERT | RIGHTONDELETE | SLIDEONNAVIGATE);
 	usadd(&d->us, &d->selanchor, 0);
 	usadd(&d->us, &d->renderstart, 0);
 	return true;
