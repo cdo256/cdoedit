@@ -303,23 +303,19 @@ redraw(void)
 {
 	edraw(term.line, term.col, term.row, &term.c.x, &term.c.y);
 	
-	int cx = term.c.x;
-
 	if (!xstartdraw())
 		return;
 
 	/* adjust cursor position */
 	LIMIT(term.ocx, 0, term.col-1);
 	LIMIT(term.ocy, 0, term.row-1);
-	if (term.line[term.ocy][term.ocx].mode & ATTR_WDUMMY)
-		term.ocx--;
-	if (term.line[term.c.y][cx].mode & ATTR_WDUMMY)
-		cx--;
+	LIMIT(term.c.x, 0, term.col-1);
+	LIMIT(term.c.y, 0, term.row-1);
 
 	drawregion(0, 0, term.col, term.row);
-	xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
+	xdrawcursor(term.c.x, term.c.y, term.line[term.c.y][term.c.x],
 			term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
-	term.ocx = cx, term.ocy = term.c.y;
+	term.ocx = term.c.x, term.ocy = term.c.y;
 	xfinishdraw();
 	xximspot(term.ocx, term.ocy);
 }

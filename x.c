@@ -945,10 +945,6 @@ xmakeglyphfontspecs(XftGlyphFontSpec *specs, const Glyph *glyphs, int len, int x
 		rune = glyphs[i].u;
 		mode = glyphs[i].mode;
 
-		/* Skip dummy wide-character spacing. */
-		if (mode == ATTR_WDUMMY)
-			continue;
-
 		/* Determine font for glyph if different from previous glyph. */
 		if (prevmode != mode) {
 			prevmode = mode;
@@ -1314,8 +1310,6 @@ xdrawline(Line line, int x1, int y1, int x2)
 	i = ox = 0;
 	for (x = x1; x < x2 && i < numspecs; x++) {
 		new = line[x];
-		if (new.mode == ATTR_WDUMMY)
-			continue;
 		if (i > 0 && ATTRCMP(base, new)) {
 			xdrawglyphfontspecs(specs, base, i, ox, y1);
 			specs += i;

@@ -86,9 +86,9 @@ typedef struct {
 } UpdateSet;
 
 typedef struct {
-	char *bufstart;		/* buffer for storing chunks of the file */
-	char *bufend;	        /* one past the end of the buffer */
-	char *curleft;		/* one past the end of the upper section */
+	char *bufstart;         /* buffer for storing chunks of the file */
+	char *bufend;           /* one past the end of the buffer */
+	char *curleft;          /* one past the end of the upper section */
 	char *curright;         /* start of the lower section */
 	char *renderstart;      /* top left of the editor */
 	char *selanchor;
@@ -411,7 +411,7 @@ dupdateondelete(Document *d, char *rangestart, char *rangeend)
 					u < rangeend ? ((behaviour & NULLONDELETE) ? NULL : rangestart) :
 					u <= d->curleft ? u - (rangeend - rangestart) : u;
 			} else {
-				assert3(rangestart < d->curleft, d->curleft < d->curright, d->curright < rangeend);
+				assert3(rangestart <= d->curleft, d->curleft < d->curright, d->curright <= rangeend);
 				if (rangestart <= u && u < rangeend) {
 					v = 	(behaviour & NULLONDELETE) ? NULL :
 						(behaviour & PREFERRIGHT) ? rangeend : rangestart;
