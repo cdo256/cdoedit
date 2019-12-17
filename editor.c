@@ -807,8 +807,11 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 				g.u = ' ';
 			}
 			g.mode = 0;
-			g.fg = insel ? 0 : 1;
-			g.bg = insel ? 1 : 0;
+			if (insel && !endofline) {
+				g.fg = 0; g.bg = 1;
+			} else {
+				g.fg = 1; g.bg = 0;
+			}
 			line[r][c] = g;
 		}
 	}
