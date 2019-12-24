@@ -158,10 +158,17 @@ static Shortcut shortcuts[] = {
 	/* mask                 keysym          function        argument */
 	{ CTRL,                 XK_plus,        zoom,           {.f = +1} },
 	{ CTRL,                 XK_minus,       zoom,           {.f = -1} },
+	{ CTRL,                 XK_equal,       zoom,           {.f = +1} },
 	{ CTRL,                 'S',            save,           {.i =  0} },
 	{ CTRL,                 's',            save,           {.i =  0} },
 	{ CTRL,                 'R',            load,           {.i =  0} },
 	{ CTRL,                 'r',            load,           {.i =  0} },
+/*	{ CTRL,                 'C',            clipcopy,       {.i =  0} },
+	{ CTRL,                 'c',            clipcopy,       {.i =  0} },
+	{ CTRL,                 'V',            clippaste,      {.i =  0} },
+	{ CTRL,                 'v',            clippaste,      {.i =  0} },
+	{ CTRL,                 'X',            clipcut,        {.i =  0} },
+	{ CTRL,                 'x',            clipcut,        {.i =  0} }, */
 };
 
 /*

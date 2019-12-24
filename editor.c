@@ -258,15 +258,15 @@ dwalkrune(const Document *d, const char *pos, int change)
 		if (pos == d->curleft) pos = d->curright;
 		if (pos == d->bufend) break;
 		assert_valid_read(d, pos);
-		if (!(*pos & 128))
+		if (!((uchar)*pos & 128))
 			pos += 1;
-		else if (!(*pos & 32))
+		else if (!((uchar)*pos & 32))
 			pos += 2;
-		else if (!(*pos & 16))
+		else if (!((uchar)*pos & 16))
 			pos += 3;
-		else if (!(*pos & 8))
+		else if (!((uchar)*pos & 8))
 			pos += 4;
-		else if (!(*pos & 4))
+		else if (!((uchar)*pos & 4))
 			pos += 5;
 		else
 			pos += 6;
@@ -276,7 +276,7 @@ dwalkrune(const Document *d, const char *pos, int change)
 		if (pos == d->bufstart) break;
 		assert_valid_read(d, pos-1);
 		pos--;
-		while ((*pos >> 6) == 2)
+		while (((uchar)*pos >> 6) == 2)
 			pos--;
 	}
 	return (char *)pos;
