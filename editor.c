@@ -413,7 +413,7 @@ dupdateondelete(Document *d, char *rangestart, char *rangeend)
 					u <= d->curleft ? u - (rangeend - rangestart) : u;
 			} else {
 				assert3(rangestart <= d->curleft, d->curleft < d->curright, d->curright <= rangeend);
-				if (POSCMP(d, rangestart, u) <= 0 && POSCMP(d, u, rangeend) < 0) {
+				if (POSCMP(d, rangestart, u) <= 0 && POSCMP(d, u, rangeend) <= 0) {
 					v = 	(behaviour & NULLONDELETE) ? NULL :
 						(behaviour & RIGHTONDELETE) ? rangeend : rangestart;
 				} else v = u;
