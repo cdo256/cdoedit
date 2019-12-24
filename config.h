@@ -92,90 +92,73 @@ static unsigned int defaultattr = 1;
 #define CTRL ControlMask
 #define SHIFT ShiftMask
 #define NOSHIFT 0
+#define DEFAULT_MASK (~(Mod2Mask|XK_SWITCH_MOD|LockMask))
+#define IGNORE_SHIFT (DEFAULT_MASK&~SHIFT)
 
 static Shortcut shortcuts[] = {
 	/* editing */
-	/* mask                 keysym          function        argument */
-	{ NOSHIFT,              XK_Tab,         changeindent,   {.i = +1} },
-	{ SHIFT,                XK_Tab,         changeindent,   {.i = -1} },
-	{ CTRL|NOSHIFT,         XK_Home,        zoomreset,      {.f =  0} },
-	{ CTRL|SHIFT,           XK_Home,        zoomreset,      {.f =  0} },
-	{ CTRL|NOSHIFT,         XK_C,           clipcopy,       {.i =  0} },
-	{ CTRL|SHIFT,           XK_C,           clipcopy,       {.i =  0} },
-	{ CTRL|NOSHIFT,         XK_V,           clippaste,      {.i =  0} },
-	{ CTRL|SHIFT,           XK_V,           clippaste,      {.i =  0} },
-	{ CTRL|NOSHIFT,         XK_Y,           selpaste,       {.i =  0} },
-	{ CTRL|SHIFT,           XK_Y,           selpaste,       {.i =  0} },
-	{ CTRL|NOSHIFT,         XK_Num_Lock,    numlock,        {.i =  0} },
-	{ CTRL|SHIFT,           XK_Num_Lock,    numlock,        {.i =  0} },
-	{ NOSHIFT,              XK_Return,      newline,        {.i =  0} },
-	{ SHIFT,                XK_Return,      newline,        {.i =  0} },
-	{ NOSHIFT,              XK_BackSpace,   deletechar,     {.i = -1} },
-	{ SHIFT,                XK_BackSpace,   deletechar,     {.i = -1} },
-	{ NOSHIFT,              XK_Delete,      deletechar,     {.i = +1} },
-	{ SHIFT,                XK_Delete,      deletechar,     {.i = +1} },
-	{ CTRL|NOSHIFT,         XK_BackSpace,   deleteword,     {.i = -1} },
-	{ CTRL|SHIFT,           XK_BackSpace,   deleteword,     {.i = -1} },
-	{ CTRL|NOSHIFT,         XK_Delete,      deleteword,     {.i = +1} },
-	{ CTRL|SHIFT,           XK_Delete,      deleteword,     {.i = +1} },
-	{ CTRL|NOSHIFT,         'K',            deleterow,      {.i =  0} },
-	{ CTRL|SHIFT,           'K',            deleterow,      {.i =  0} },
-	{ CTRL|NOSHIFT,         'k',            deleterow,      {.i =  0} },
-	{ CTRL|SHIFT,           'k',            deleterow,      {.i =  0} },
+	/* modmask          modval                keysym          function        argument */
+	{ IGNORE_SHIFT,     0,                    XK_Tab,         changeindent,   {.i = +1} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_Home,        zoomreset,      {.f =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_C,           clipcopy,       {.i =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_V,           clippaste,      {.i =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_Y,           selpaste,       {.i =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_Num_Lock,    numlock,        {.i =  0} },
+	{ IGNORE_SHIFT,     0,                    XK_Return,      newline,        {.i =  0} },
+	{ IGNORE_SHIFT,     0,                    XK_BackSpace,   deletechar,     {.i = -1} },
+	{ IGNORE_SHIFT,     0,                    XK_Delete,      deletechar,     {.i = +1} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_BackSpace,   deleteword,     {.i = -1} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_Delete,      deleteword,     {.i = +1} },
+	{ IGNORE_SHIFT,     CTRL,                 'K',            deleterow,      {.i =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 'k',            deleterow,      {.i =  0} },
 
 	/* navigation */
-	/* mask                 keysym          function        argument */
-	{ NOSHIFT,              XK_Home,        navline,        {.i = -1} },
-	{ SHIFT,                XK_Home,        navline,        {.i = -2} },
-	{ NOSHIFT,              XK_End,         navline,        {.i = +1} },
-	{ SHIFT,                XK_End,         navline,        {.i = +2} },
-	{ CTRL|NOSHIFT,         XK_Home,        navdocument,    {.i = -1} },
-	{ CTRL|SHIFT,           XK_Home,        navdocument,    {.i = -2} },
-	{ CTRL|NOSHIFT,         XK_End,         navdocument,    {.i = +1} },
-	{ CTRL|SHIFT,           XK_End,         navdocument,    {.i = +2} },
-	{ NOSHIFT,              XK_Up,          navrow,         {.i = -1} },
-	{ SHIFT,                XK_Up,          navrow,         {.i = -2} },
-	{ NOSHIFT,              XK_Down,        navrow,         {.i = +1} },
-	{ SHIFT,                XK_Down,        navrow,         {.i = +2} },
-	{ NOSHIFT,              XK_Left,        navchar,        {.i = -1} },
-	{ SHIFT,                XK_Left,        navchar,        {.i = -2} },
-	{ NOSHIFT,              XK_Right,       navchar,        {.i = +1} },
-	{ SHIFT,                XK_Right,       navchar,        {.i = +2} },
-	{ CTRL|NOSHIFT,         XK_Up,          navparagraph,   {.i = -1} },
-	{ CTRL|SHIFT,           XK_Up,          navparagraph,   {.i = -2} },
-	{ CTRL|NOSHIFT,         XK_Down,        navparagraph,   {.i = +1} },
-	{ CTRL|SHIFT,           XK_Down,        navparagraph,   {.i = +2} },
-	{ CTRL|NOSHIFT,         XK_Left,        navword,        {.i = -1} },
-	{ CTRL|SHIFT,           XK_Left,        navword,        {.i = -2} },
-	{ CTRL|NOSHIFT,         XK_Right,       navword,        {.i = +1} },
-	{ CTRL|SHIFT,           XK_Right,       navword,        {.i = +2} },
-	{ NOSHIFT,              XK_Page_Up,     navpage,        {.i = -1} },
-	{ SHIFT,                XK_Page_Up,     navpage,        {.i = -2} },
-	{ NOSHIFT,              XK_Page_Down,   navpage,        {.i = +1} },
-	{ SHIFT,                XK_Page_Down,   navpage,        {.i = +2} },
+	/* modmask          modval                keysym          function        argument */
+	{ DEFAULT_MASK,     0,                    XK_Home,        navline,        {.i = -1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Home,        navline,        {.i = -2} },
+	{ DEFAULT_MASK,     0,                    XK_End,         navline,        {.i = +1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_End,         navline,        {.i = +2} },
+	{ DEFAULT_MASK,     CTRL,                 XK_Home,        navdocument,    {.i = -1} },
+	{ DEFAULT_MASK,     CTRL|SHIFT,           XK_Home,        navdocument,    {.i = -2} },
+	{ DEFAULT_MASK,     CTRL,                 XK_End,         navdocument,    {.i = +1} },
+	{ DEFAULT_MASK,     CTRL|SHIFT,           XK_End,         navdocument,    {.i = +2} },
+	{ DEFAULT_MASK,     0,                    XK_Up,          navrow,         {.i = -1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Up,          navrow,         {.i = -2} },
+	{ DEFAULT_MASK,     0,                    XK_Down,        navrow,         {.i = +1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Down,        navrow,         {.i = +2} },
+	{ DEFAULT_MASK,     0,                    XK_Left,        navchar,        {.i = -1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Left,        navchar,        {.i = -2} },
+	{ DEFAULT_MASK,     0,                    XK_Right,       navchar,        {.i = +1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Right,       navchar,        {.i = +2} },
+	{ DEFAULT_MASK,     CTRL,                 XK_Up,          navparagraph,   {.i = -1} },
+	{ DEFAULT_MASK,     CTRL|SHIFT,           XK_Up,          navparagraph,   {.i = -2} },
+	{ DEFAULT_MASK,     CTRL,                 XK_Down,        navparagraph,   {.i = +1} },
+	{ DEFAULT_MASK,     CTRL|SHIFT,           XK_Down,        navparagraph,   {.i = +2} },
+	{ DEFAULT_MASK,     CTRL,                 XK_Left,        navword,        {.i = -1} },
+	{ DEFAULT_MASK,     CTRL|SHIFT,           XK_Left,        navword,        {.i = -2} },
+	{ DEFAULT_MASK,     CTRL,                 XK_Right,       navword,        {.i = +1} },
+	{ DEFAULT_MASK,     CTRL|SHIFT,           XK_Right,       navword,        {.i = +2} },
+	{ DEFAULT_MASK,     0,                    XK_Page_Up,     navpage,        {.i = -1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Page_Up,     navpage,        {.i = -2} },
+	{ DEFAULT_MASK,     0,                    XK_Page_Down,   navpage,        {.i = +1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Page_Down,   navpage,        {.i = +2} },
 
 	/* other */
-	/* mask                 keysym          function        argument */
-	{ CTRL,                 XK_plus,        zoom,           {.f = +1} },
-	{ CTRL,                 XK_minus,       zoom,           {.f = -1} },
-	{ CTRL,                 XK_equal,       zoom,           {.f = +1} },
-	{ CTRL,                 'S',            save,           {.i =  0} },
-	{ CTRL,                 's',            save,           {.i =  0} },
-	{ CTRL,                 'R',            load,           {.i =  0} },
-	{ CTRL,                 'r',            load,           {.i =  0} },
-/*	{ CTRL,                 'C',            clipcopy,       {.i =  0} },
-	{ CTRL,                 'c',            clipcopy,       {.i =  0} },
-	{ CTRL,                 'V',            clippaste,      {.i =  0} },
-	{ CTRL,                 'v',            clippaste,      {.i =  0} },
-	{ CTRL,                 'X',            clipcut,        {.i =  0} },
-	{ CTRL,                 'x',            clipcut,        {.i =  0} }, */
+	/* modmask          modval                keysym          function        argument */
+	{ IGNORE_SHIFT,     CTRL,                 XK_plus,        zoom,           {.f = +1} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_minus,       zoom,           {.f = -1} },
+	{ IGNORE_SHIFT,     CTRL,                 XK_equal,       zoom,           {.f = +1} },
+	{ DEFAULT_MASK,     CTRL,                 'S',            save,           {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 's',            save,           {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'R',            load,           {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'r',            load,           {.i =  0} },
+/*	{ DEFAULT_MASK,     CTRL,                 'C',            clipcopy,       {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'c',            clipcopy,       {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'V',            clippaste,      {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'v',            clippaste,      {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'X',            clipcut,        {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'x',            clipcut,        {.i =  0} }, */
 };
-
-/*
- * State bits to ignore when matching key or button events.  By default,
- * numlock (Mod2Mask) and keyboard layout (XK_SWITCH_MOD) are ignored.
- */
-static uint ignoremod = Mod2Mask|XK_SWITCH_MOD;
 
 /*
  * Printable characters in ASCII, used to estimate the advance width

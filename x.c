@@ -1,4 +1,5 @@
 /* See LICENSE for license details. */
+#include <assert.h>
 #include <errno.h>
 #include <math.h>
 #include <limits.h>
@@ -22,7 +23,8 @@ static char *argv0;
 
 /* types used in config.h */
 typedef struct {
-	uint mod;
+	uint modmask;
+	uint modval;
 	KeySym keysym;
 	void (*func)(const Arg *);
 	const Arg arg;
@@ -166,7 +168,7 @@ static void focus(XEvent *);
 static void propnotify(XEvent *);
 static void selnotify(XEvent *);
 static void selrequest(XEvent *);
-static int match(uint, uint);
+static int match(uint, uint, uint);
 
 static void run(void);
 static void usage(void);
@@ -1432,9 +1434,10 @@ focus(XEvent *ev)
 }
 
 int
-match(uint mask, uint state)
+match(uint mask, uint val, uint state)
 {
-	return mask == XK_ANY_MOD || mask == (state & ~ignoremod);
+	assert((val & mask) == val);
+	return val == (state & mask);
 }
 
 void
@@ -1453,7 +1456,7 @@ kpress(XEvent *ev)
 	len = XmbLookupString(xw.xic, e, buf, sizeof buf, &ksym, &status);
 	/* 1. shortcuts */
 	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
-		if (ksym == bp->keysym && match(bp->mod, e->state)) {
+		if (ksym == bp->keysym && match(bp->modmask, bp->modval, e->state)) {
 			bp->func(&(bp->arg));
 			return;
 		}
