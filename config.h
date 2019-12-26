@@ -98,7 +98,8 @@ static unsigned int defaultattr = 1;
 static Shortcut shortcuts[] = {
 	/* editing */
 	/* modmask          modval                keysym          function        argument */
-	{ IGNORE_SHIFT,     0,                    XK_Tab,         changeindent,   {.i = +1} },
+	{ DEFAULT_MASK,     0,                    XK_Tab,         changeindent,   {.i = +1} },
+	{ DEFAULT_MASK,     SHIFT,                XK_Tab,         changeindent,   {.i = -1} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_Home,        zoomreset,      {.f =  0} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_C,           clipcopy,       {.i =  0} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_V,           clippaste,      {.i =  0} },
