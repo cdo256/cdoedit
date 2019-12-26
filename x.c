@@ -1470,7 +1470,7 @@ kpress(XEvent *ev)
 	if (len == 0)
 		return;
 	else if (!(e->state & (CTRL | META)))
-		ewrite(buf[0]);
+		ewritestr((uchar *)buf,len);
 }
 
 void
