@@ -54,9 +54,10 @@ typedef struct {
 
 /* function definitions used in config.h */
 static void clipcopy(const Arg *);
+static void clipcut(const Arg *);
+static void clipcutrow(const Arg *);
 static void clippaste(const Arg *);
 static void numlock(const Arg *);
-static void selpaste(const Arg *);
 static void zoom(const Arg *);
 static void zoomabs(const Arg *);
 static void zoomreset(const Arg *);
@@ -108,7 +109,7 @@ typedef struct {
 
 typedef struct {
 	Atom xtarget;
-	char *primary, *clipboard;
+	char *clipboard;
 	struct timespec tclick1;
 	struct timespec tclick2;
 } XSelection;
@@ -228,19 +229,39 @@ static char *opt_line  = NULL;
 static char *title = NULL;
 
 void
-clipcopy(const Arg *dummy)
+clipcopystr(char *str)
 {
-	(void)dummy;
+	/* str must be heap allocated */
 	Atom clipboard;
 
 	free(xsel.clipboard);
-	xsel.clipboard = NULL;
+	xsel.clipboard = str;
+	clipboard = XInternAtom(xw.dpy, "CLIPBOARD", 0);
+	XSetSelectionOwner(xw.dpy, clipboard, xw.win, CurrentTime);
+}
 
-	if (xsel.primary != NULL) {
-		xsel.clipboard = xstrdup(xsel.primary);
-		clipboard = XInternAtom(xw.dpy, "CLIPBOARD", 0);
-		XSetSelectionOwner(xw.dpy, clipboard, xw.win, CurrentTime);
-	}
+void
+clipcopy(const Arg *dummy)
+{
+	(void)dummy;
+	clipcopystr(egetsel());
+}
+
+void
+clipcut(const Arg *dummy)
+{
+	(void)dummy;
+	clipcopystr(egetsel());
+	/* write an empty string to cut the selection */
+	ewritestr((uchar *)"", 0);
+}
+
+void
+clipcutrow(const Arg *dummy)
+{
+	(void)dummy;
+	clipcopystr(egetline());
+	deleterow(NULL);
 }
 
 void
@@ -251,14 +272,6 @@ clippaste(const Arg *dummy)
 
 	clipboard = XInternAtom(xw.dpy, "CLIPBOARD", 0);
 	XConvertSelection(xw.dpy, clipboard, xsel.xtarget, clipboard,
-			xw.win, CurrentTime);
-}
-
-void
-selpaste(const Arg *dummy)
-{
-	(void)dummy;
-	XConvertSelection(xw.dpy, XA_PRIMARY, xsel.xtarget, XA_PRIMARY,
 			xw.win, CurrentTime);
 }
 
@@ -319,7 +332,7 @@ selnotify(XEvent *e)
 {
 	ulong nitems, ofs, rem;
 	int format;
-	uchar *data, *last, *repl;
+	uchar *data;
 	Atom type, incratom, property = None;
 
 	incratom = XInternAtom(xw.dpy, "INCR", 0);
@@ -371,17 +384,8 @@ selnotify(XEvent *e)
 			continue;
 		}
 
-		/*
-		 * Line endings are inconsistent in the terminal and GUI world
-		 * copy and pasting. When receiving some selection data,
-		 * replace all '\n' with '\r'.
-		 * FIXME: Fix the computer world.
-		 */
-		repl = data;
-		last = data + nitems * format / 8;
-		while ((repl = memchr(repl, '\n', last - repl))) {
-			*repl++ = '\r';
-		}
+		size_t size = nitems * format / 8;
+		ewritestr(data, size);
 
 		XFree(data);
 		/* number of 32-bit chunks returned */
@@ -407,7 +411,7 @@ selrequest(XEvent *e)
 	XSelectionRequestEvent *xsre;
 	XSelectionEvent xev;
 	Atom xa_targets, string, clipboard;
-	char *seltext;
+	char *seltext, *tofree = NULL;
 
 	xsre = (XSelectionRequestEvent *) e;
 	xev.type = SelectionNotify;
@@ -436,7 +440,7 @@ selrequest(XEvent *e)
 		 */
 		clipboard = XInternAtom(xw.dpy, "CLIPBOARD", 0);
 		if (xsre->selection == XA_PRIMARY) {
-			seltext = xsel.primary;
+			tofree = seltext = egetsel();
 		} else if (xsre->selection == clipboard) {
 			seltext = xsel.clipboard;
 		} else {
@@ -452,6 +456,7 @@ selrequest(XEvent *e)
 					(uchar *)seltext, strlen(seltext));
 			xev.property = xsre->property;
 		}
+		free(tofree);
 	}
 
 	/* all done, send a notification to the listener */
@@ -919,7 +924,6 @@ xinit(int cols, int rows)
 
 	clock_gettime(CLOCK_MONOTONIC, &xsel.tclick1);
 	clock_gettime(CLOCK_MONOTONIC, &xsel.tclick2);
-	xsel.primary = NULL;
 	xsel.clipboard = NULL;
 	xsel.xtarget = XInternAtom(xw.dpy, "UTF8_STRING", 0);
 	if (xsel.xtarget == None)

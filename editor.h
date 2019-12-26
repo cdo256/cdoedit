@@ -3,7 +3,10 @@
 #include "cdoedit.h"
 
 void einit();
+char *egetsel();
+char *egetline();
 void ewrite(Rune r);
+void ewritestr(uchar *str, size_t size);
 void edraw(Line *line, int colc, int rowc, int *curcol, int *currow);
 void ejumptoline(long line);
 

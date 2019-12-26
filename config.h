@@ -101,17 +101,20 @@ static Shortcut shortcuts[] = {
 	{ DEFAULT_MASK,     0,                    XK_Tab,         changeindent,   {.i = +1} },
 	{ DEFAULT_MASK,     SHIFT,                XK_Tab,         changeindent,   {.i = -1} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_Home,        zoomreset,      {.f =  0} },
-	{ IGNORE_SHIFT,     CTRL,                 XK_C,           clipcopy,       {.i =  0} },
-	{ IGNORE_SHIFT,     CTRL,                 XK_V,           clippaste,      {.i =  0} },
-	{ IGNORE_SHIFT,     CTRL,                 XK_Y,           selpaste,       {.i =  0} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_Num_Lock,    numlock,        {.i =  0} },
 	{ IGNORE_SHIFT,     0,                    XK_Return,      newline,        {.i =  0} },
 	{ IGNORE_SHIFT,     0,                    XK_BackSpace,   deletechar,     {.i = -1} },
 	{ IGNORE_SHIFT,     0,                    XK_Delete,      deletechar,     {.i = +1} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_BackSpace,   deleteword,     {.i = -1} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_Delete,      deleteword,     {.i = +1} },
-	{ IGNORE_SHIFT,     CTRL,                 'K',            deleterow,      {.i =  0} },
-	{ IGNORE_SHIFT,     CTRL,                 'k',            deleterow,      {.i =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 'K',            clipcutrow,     {.i =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 'k',            clipcutrow,     {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'C',            clipcopy,       {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'c',            clipcopy,       {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'V',            clippaste,      {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'v',            clippaste,      {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'X',            clipcut,        {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'x',            clipcut,        {.i =  0} },
 
 	/* navigation */
 	/* modmask          modval                keysym          function        argument */
@@ -153,12 +156,6 @@ static Shortcut shortcuts[] = {
 	{ DEFAULT_MASK,     CTRL,                 's',            save,           {.i =  0} },
 	{ DEFAULT_MASK,     CTRL,                 'R',            load,           {.i =  0} },
 	{ DEFAULT_MASK,     CTRL,                 'r',            load,           {.i =  0} },
-/*	{ DEFAULT_MASK,     CTRL,                 'C',            clipcopy,       {.i =  0} },
-	{ DEFAULT_MASK,     CTRL,                 'c',            clipcopy,       {.i =  0} },
-	{ DEFAULT_MASK,     CTRL,                 'V',            clippaste,      {.i =  0} },
-	{ DEFAULT_MASK,     CTRL,                 'v',            clippaste,      {.i =  0} },
-	{ DEFAULT_MASK,     CTRL,                 'X',            clipcut,        {.i =  0} },
-	{ DEFAULT_MASK,     CTRL,                 'x',            clipcut,        {.i =  0} }, */
 };
 
 /*

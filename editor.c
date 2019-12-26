@@ -635,6 +635,25 @@ dwalkrow(const Document *d, const char *pos, int change)
 	return (char *)pos;
 }
 
+/* return value heap-allocated and null terminated */
+char *
+dgetsubstr(const Document *d, char *start, char *end)
+{
+	assert(start <= end);
+	const size_t gapsize = d->curright - d->curleft;
+	if (end <= d->curleft || d->curright <= start) {
+		char *ret = malloc(end - start + 1);
+		memcpy(ret, start, end - start);
+		ret[end - start] = '\0';
+		return ret;
+	} else {
+		char *ret = malloc(end - start - gapsize + 1);
+		memcpy(ret, start, d->curleft - start);
+		memcpy(ret + (d->curleft - start), d->curright, end - d->curright);
+		ret[end - start - gapsize] = '\0';
+		return ret;
+	}
+}
 
 void
 dnavigate(Document *d, char *pos, bool isselect)
@@ -759,11 +778,33 @@ einit()
 	}
 }
 
+char *
+egetsel()
+{
+	if (!doc.selanchor) return NULL;
+	else {
+		return dgetsubstr(&doc, MIN(doc.curleft, doc.selanchor), MAX(doc.curleft, doc.selanchor));
+	}
+}
+
+char *
+egetline()
+{
+	return dgetsubstr(&doc, dwalkrow(&doc, doc.curleft, 0), dwalkrow(&doc, doc.curleft, +1));
+}
+
 void
 ewrite(Rune r)
 {
 	if (doc.selanchor) ddeletesel(&doc);
 	dinsertchar(&doc, doc.curleft, r);
+}
+
+void
+ewritestr(uchar *str, size_t size)
+{
+	if (doc.selanchor) ddeletesel(&doc);
+	dinsert(&doc, doc.curleft, (char *)str, size);
 }
 
 void
