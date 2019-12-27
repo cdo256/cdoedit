@@ -85,26 +85,48 @@ reasons I've opted to have the gap always follow the cursor precisely.
 One obvious exception here is that jumping to the start or end of the document doesn't really require the user
 looking at the surrounding context, because they know they just want to quickly add something to the end of the
 document. So they can Ctrl+End, press enter and immediately start typing. Thankfully for these kinds of cases
-user input is buffered by the x server so no key strokes are lost.
+user input is buffered by the X server so no key strokes are lost.
 
 Realloc spike
 =============
 Another big performance consideration is the situation when the buffer needs to grow. This can happen at any time
 when the user is in the middle of editing some text and may require copying over the entire document. When this
 happens, the user experiences a delay proportional to the size of the document. This is because, the gap has got
-too small and the whole buffer must be reallocated and the right section must be moved to the end of the new buffer.
-This can be mitigated by doing the reallocation during idle time or eleminated entirely by taking advantage of
-virtual memory.
+too small and the whole buffer must be reallocated and the right section must be moved to the end of the new
+buffer. This can be mitigated by doing the reallocation during idle time or eleminated entirely by taking
+advantage of virtual memory.
 
 ### Mitigating the reallocation spike ###
 The simplest way to mitigate this is to preemptively grow the buffer during idle time before the buffer is actually
 needed. This could be done after a keypress in anticipation of the next, before calling select() in the main loop,
-or after a certain period of inactivity. 
+or after a certain period of inactivity.
 
 ### Eliminating the reallocation spike entirely ###
 The reallocation spike is fundamental to the data-structure and forces us to make a trade off between space and
 worst-case latency of a key-press. Either we start with a buffer much larger to accomodate most of the expansion
 and hog much more memory than we need or we keep the buffer tight but take the ux hit of more frequent reallocation
-(or somewhere between these two extremes). A solution exists that only involves minimal code changes, but gives us
-both sides of the trade-off for free with basically no downside. The only problem is that this requires a realloc-
-ation method that grows _downward_, which cannot be written using just the POSIX standard library.
+(or somewhere between these two extremes).
+
+All is not lost however. A solution exists that only involves minimal code changes, but gives us both sides of the
+trade-off for free with basically no downside. The only problem is that this requires a reallocation method that
+grows _downward_, which cannot be written using just the POSIX C standard library.
+
+The solution works by taking advantage of virtual memory. We know that chunks can be mapped from anywhere in memory
+and will only be mapped when we ask for them. This gives us the option of making a very large gap but only
+allocating pages that actually contain data.
+
+[MMMMMM] = Mapped page
+[//////] = Unmapped page
+
+Pages: [MMMMMM][MMMMMM][//////][//////][//////][//////]........[//////][//////][//////][MMMMMM][MMMMMM]
+Data:  [This side ]////////////////////////////////////........///////////////////////////[is far away]
+       \___left___/\____________________________(very large) gap_________________________/\___right___/
+
+This not only solves the reallocation spike problem but actually reduces the memory footprint of the document to
+be at most file_len + page_size * 2 instead of file_len * 2 which could make a difference on memory-constrained
+systems but won't matter at all in most cases.
+
+This leaves us with two relared questions:
+ 1. Can we get this to play nicely with malloc?
+ 2. How do we decide size and location in memory?
+
