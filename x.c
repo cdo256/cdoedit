@@ -1602,7 +1602,7 @@ run(void)
 void
 usage(void)
 {
-	udie("usage: %s [-l lineno] filename", argv0);
+	udie("usage: %s [-l lineno] filename\n", argv0);
 }
 
 extern char* filename;
@@ -1646,7 +1646,7 @@ main(int argc, char *argv[])
 	if (opt_line) {
 		long line;
 		if (1 != sscanf(opt_line, "%ld", &line) || line <= 0) {
-			udie("the line number is not a valid integer.");
+			udie("the line number is not a valid integer.\n");
 		}
 		ejumptoline(line);
 	}
