@@ -1,6 +1,14 @@
-cdoedit - simple text editor
---------------------
-cdoedit is a simple text file editor for X intended only for my personal use.
+cdoedit - a really simple graphical text editor
+
+Overview
+--------
+cdoedit is a simple text file editor for X for my personal use. It comes with default keybindings that will
+be most familiar to those who grew up with Windows. Ctrl+C is copy, Ctrl+V is paste, arrow keys to move the
+cursor, Ctrl+Arrows to move by word/paragraph, hold down shift when you move and it selects. All the rest of
+this is in the configuration file, config.h. If you edit this file, make sure to rebuild (sudo make install)
+to get the changes, since the config file is compiled in to the executable. I haven't tested this on any
+other platform so this could corrupt files you try to edit, pick up files from the wrong directory or
+otherwise misbehave so keep a keen eye on it and be sure you backup anything before you (cdo)edit it.
 
 
 Requirements
@@ -24,8 +32,79 @@ Credits
 cdoedit is based on Suckless' Simple Terminal (st).
 st in turn is based on Aurélien APTEL <aurelien dot aptel at gmail dot com> bt source code.
 
+
+Implementation
+--------------
+
 Files
------
+=====
 cdoedit.c handles just the grid of glyphys that form the display buffer.
 editor.c manages the gap buffer and has convenient edit operations. This file is brand new since the st fork.
 x.c does all the interaction with the xserver. This file is mostly unchanged since the st fork.
+
+
+The Gap Buffer
+==============
+The core of the Document structure in editor.c is a gap buffer. This stores all the characters in the document
+in a way that's more efficient than a compact array (with no gap) while still maintaining a lot of simplicity.
+It works by splitting a single buffer into three regions: the left section, the gap, and the right section like
+so:
+
+      __left___  ______gap______  _________right__________
+     /         \/               \/                        \
+     [Hello wor]/////////////////[ld! This is a text file.]
+     ^         ^                 ^                        ^
+  bufstart  gapleft           gapright                  bufend
+
+The concrete document is simply gotten by concatenating the left and right buffers. The contents of the gap
+section is never read (unless one of the gap pointers is first moved). To grow the document around the gap, the
+text is inserted at gapleft and the gapleft pointer is moved to point to the end of the newly inserted string.
+
+This is a simple data structure for sequences of values expected to have most edits clustered close together.
+Text editors are a perfect example of having edits close together because very often when you're editing a text
+document, you're either navigating or typing sequentially or editing/deleting for long sequences in a small
+part of the document. So a gap buffer should be a fast (and relatively small) method of representing an editable
+text document. Even when doing a find-and- replace (a feature not supported in cdoedit) on something spread out
+throughout the document works (as long as it's sequential) it only has to move as many characters as the
+document is long.
+
+Gap placement
+=============
+One consideration of this structure is where to put the gap. There are two main options:
+ 1. Have the gap always be where the cursor is.
+ 2. Have the gap be where the last edit was.
+
+There are more options for example using some huristic to work out where the next edit point will be but we want
+to keep things simple. #1 would slow down large navigations but #2 would put the delay on the first edit after a
+navigation. Because text editors are designed to be used by humans, a large navigation isn't usually immediately
+followed by an edit because it takes a little time for the user to see where they are in the the document and move
+the cursor more finely to where they want to type. Whereas when typing starts, it's usually lots of little edits
+in quick succession and a delay to the user to the first edit could hurt the user experience. Because of these
+reasons I've opted to have the gap always follow the cursor precisely.
+
+One obvious exception here is that jumping to the start or end of the document doesn't really require the user
+looking at the surrounding context, because they know they just want to quickly add something to the end of the
+document. So they can Ctrl+End, press enter and immediately start typing. Thankfully for these kinds of cases
+user input is buffered by the x server so no key strokes are lost.
+
+Realloc spike
+=============
+Another big performance consideration is the situation when the buffer needs to grow. This can happen at any time
+when the user is in the middle of editing some text and may require copying over the entire document. When this
+happens, the user experiences a delay proportional to the size of the document. This is because, the gap has got
+too small and the whole buffer must be reallocated and the right section must be moved to the end of the new buffer.
+This can be mitigated by doing the reallocation during idle time or eleminated entirely by taking advantage of
+virtual memory.
+
+### Mitigating the reallocation spike ###
+The simplest way to mitigate this is to preemptively grow the buffer during idle time before the buffer is actually
+needed. This could be done after a keypress in anticipation of the next, before calling select() in the main loop,
+or after a certain period of inactivity. 
+
+### Eliminating the reallocation spike entirely ###
+The reallocation spike is fundamental to the data-structure and forces us to make a trade off between space and
+worst-case latency of a key-press. Either we start with a buffer much larger to accomodate most of the expansion
+and hog much more memory than we need or we keep the buffer tight but take the ux hit of more frequent reallocation
+(or somewhere between these two extremes). A solution exists that only involves minimal code changes, but gives us
+both sides of the trade-off for free with basically no downside. The only problem is that this requires a realloc-
+ation method that grows _downward_, which cannot be written using just the POSIX standard library.
