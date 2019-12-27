@@ -21,5 +21,11 @@ necessary as root):
 
 Credits
 -------
-Based on Suckless Simple Terminal
-Based on Aurélien APTEL <aurelien dot aptel at gmail dot com> bt source code.
+cdoedit is based on Suckless' Simple Terminal (st).
+st in turn is based on Aurélien APTEL <aurelien dot aptel at gmail dot com> bt source code.
+
+Files
+-----
+cdoedit.c handles just the grid of glyphys that form the display buffer.
+editor.c manages the gap buffer and has convenient edit operations. This file is brand new since the st fork.
+x.c does all the interaction with the xserver. This file is mostly unchanged since the st fork.
