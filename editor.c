@@ -8,12 +8,8 @@
 #include <ctype.h>
 #include <assert.h>
 
+#include "util.c"
 #include "editor.h"
-
-#define MAX_LINE_LEN 1024
-#define UTF_SIZ 4
-#define UTF_INVALID 0xFFFD
-#define ERROR_BUF_LEN 8192
 
 typedef enum {
 	LEFTONDELETE = 1,
@@ -25,13 +21,11 @@ typedef enum {
 	SLIDEONNAVIGATE = 64,
 } UpdateSetEntryBehaviour;
 
-#define SIGN(a) ((a)>0 ? +1 : (a)<0 ? -1 : 0)
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
 #define POSCMP(d, a, b) ( \
 	((a) >= (d)->curright ? (a) - ((d)->curright - (d)->curleft) : (a)) - \
 	((b) >= (d)->curright ? (b) - ((d)->curright - (d)->curleft) : (b)))
 
-#define STUPIDLY_BIG(x) ((size_t)(x) & 0xFFFF000000000000ULL)
 #define assert_valid_pos(d, x) \
 	assert3((d)->bufstart <= (x), (x) <= (d)->curleft || (d)->curright <= (x), (x) <= (d)->bufend)
 #define assert_valid_read(d, x) \
@@ -41,36 +35,6 @@ typedef enum {
 	assert4((x) <= (y), (d)->bufstart <= (x), (y) <= (d)->curleft || (d)->curright <= (x), (y) <= (d)->bufend)
 #define assert_valid_write_range(d, x,y) assert2((d)->bufstart <= (x), (y) <= (d)->bufend)
 #define assert_valid_behaviour(b) assert3(!(b & LEFTONDELETE) || !(b & RIGHTONDELETE) || !(b & NULLONDELETE), !(b & LEFTONINSERT) || !(b & RIGHTONINSERT), !(b & HOLDONNAVIGATE) || !(b & SLIDEONNAVIGATE));
-
-#ifdef NDEBUG
-#define assert1(a1)
-#define assert2(a1,a2)
-#define assert3(a1,a2,a3)
-#define assert4(a1,a2,a3,a4)
-#define assert5(a1,a2,a3,a4,a5)
-#define assert6(a1,a2,a3,a4,a5,a6)
-#define assert7(a1,a2,a3,a4,a5,a6,a7)
-#define assert8(a1,a2,a3,a4,a5,a6,a7,a8)
-#define assert9(a1,a2,a3,a4,a5,a6,a7,a8,a9)
-#define assert10(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10)
-#define assert11(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11)
-#define assert12(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12)
-#define FAIL()
-#else
-#define assert1(a1) assert(a1)
-#define assert2(a1,a2) assert(a1); assert1(a2)
-#define assert3(a1,a2,a3) assert(a1); assert2(a2,a3)
-#define assert4(a1,a2,a3,a4) assert(a1); assert3(a2,a3,a4)
-#define assert5(a1,a2,a3,a4,a5) assert(a1); assert4(a2,a3,a4,a5)
-#define assert6(a1,a2,a3,a4,a5,a6) assert(a1); assert5(a2,a3,a4,a5,a6)
-#define assert7(a1,a2,a3,a4,a5,a6,a7) assert(a1); assert6(a2,a3,a4,a5,a6,a7)
-#define assert8(a1,a2,a3,a4,a5,a6,a7,a8) assert(a1); assert7(a2,a3,a4,a5,a6,a7,a8)
-#define assert9(a1,a2,a3,a4,a5,a6,a7,a8,a9) assert(a1); assert8(a2,a3,a4,a5,a6,a7,a8,a9)
-#define assert10(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10) assert(a1); assert9(a2,a3,a4,a5,a6,a7,a8,a9,a10)
-#define assert11(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11) assert(a1); assert10(a2,a3,a4,a5,a6,a7,a8,a9,a11)
-#define assert12(a1,a2,a3,a4,a5,a6,a7,a8,a9,a10,a11,a12) assert(a1); assert11(a2,a3,a4,a5,a6,a7,a8,a9,a12)
-#define fail() assert(0)
-#endif
 
 typedef struct {
 	char **ptr;
@@ -103,142 +67,11 @@ typedef struct {
 	int pos;
 } Pos;
 
-static uchar utfbyte[UTF_SIZ + 1] = {0x80,    0, 0xC0, 0xE0, 0xF0};
-static uchar utfmask[UTF_SIZ + 1] = {0xC0, 0x80, 0xE0, 0xF0, 0xF8};
-static Rune utfmin[UTF_SIZ + 1] = {       0,    0,  0x80,  0x800,  0x10000};
-static Rune utfmax[UTF_SIZ + 1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10FFFF};
-
 /* Globals */
 static Document doc;
 char *scratchbuf = NULL;
 size_t scratchlen = 0;
-char* filename = "testout";
-char errorbuf[ERROR_BUF_LEN];
-
-/* I previously had an overly complex unrolled version of this. */
-/* For simplicity and since modern compilers can optimize vector operations better than I can,
-   it's probably best if I leave it to them. */
-size_t
-memctchr(const char *s, int c, size_t n)
-{
-	assert2(!STUPIDLY_BIG(n), c == (c & 255));
-	size_t count = 0;
-	const char *end = s + n;
-	for (; s < end; n--, s++)
-		if (*s == c) count++;
-	return count;
-}
-
-bool
-grow(void **buf, size_t *len, size_t newlen, size_t entrysize)
-{
-	assert6(buf, len, !*buf == !*len, !STUPIDLY_BIG(*len), !STUPIDLY_BIG(newlen), entrysize < 65536);
-	if (newlen > *len) {
-		*len = MAX(*len*2, newlen);
-		char *newbuf;
-		newbuf = realloc(*buf, *len * entrysize);
-		if (!newbuf) {
-			fail();
-			fprintf(stderr, "could not realloc\n");
-			exit(1);
-		}
-		*buf = newbuf;
-		return true;
-	}
-	return false;
-}
-
-void
-userwarning(const char *s, ...)
-{
-	va_list va;
-	va_start(va, s);
-	vfprintf(stderr, s, va);
-	va_end(va); 
-	fail();
-}
-
-void
-printsyserror(const char *str, ...)
-{
-	va_list ap;
-	va_start(ap, str);
-	vsnprintf(errorbuf, ERROR_BUF_LEN, str, ap);
-	va_end(ap);
-	errorbuf[ERROR_BUF_LEN-1] = '\0';
-	perror(errorbuf);
-}
-
-
-size_t
-utf8validate(Rune *u, size_t i)
-{
-	if (!BETWEEN(*u, utfmin[i], utfmax[i]) || BETWEEN(*u, 0xD800, 0xDFFF))
-		*u = UTF_INVALID;
-	for (i = 1; *u > utfmax[i]; ++i)
-		;
-
-	return i;
-}
-
-Rune
-utf8decodebyte(char c, size_t *i)
-{
-	for (*i = 0; *i < LEN(utfmask); ++(*i))
-		if (((uchar)c & utfmask[*i]) == utfbyte[*i])
-			return (uchar)c & ~utfmask[*i];
-
-	return 0;
-}
-
-char
-utf8encodebyte(Rune u, size_t i)
-{
-	return utfbyte[i] | (u & ~utfmask[i]);
-}
-
-size_t
-utf8decode(const char *c, Rune *u, size_t clen)
-{
-	size_t i, j, len, type;
-	Rune udecoded;
-
-	*u = UTF_INVALID;
-	if (!clen)
-		return 0;
-	udecoded = utf8decodebyte(c[0], &len);
-	if (!BETWEEN(len, 1, UTF_SIZ))
-		return 1;
-	for (i = 1, j = 1; i < clen && j < len; ++i, ++j) {
-		udecoded = (udecoded << 6) | utf8decodebyte(c[i], &type);
-		if (type != 0)
-			return j;
-	}
-	if (j < len)
-		return 0;
-	*u = udecoded;
-	utf8validate(u, len);
-
-	return len;
-}
-
-size_t
-utf8encode(Rune u, char *c)
-{
-	size_t len, i;
-
-	len = utf8validate(&u, 0);
-	if (len > UTF_SIZ)
-		return 0;
-
-	for (i = len - 1; i != 0; --i) {
-		c[i] = utf8encodebyte(u, 0);
-		u >>= 6;
-	}
-	c[0] = utf8encodebyte(u, len);
-
-	return len;
-}
+char* filename = NULL;
 
 bool
 iswordboundry(Rune a, Rune b)
@@ -368,7 +201,7 @@ usinit(UpdateSet *us)
 {
 	us->count = 0;
 	us->cap = 50;
-	us->array = malloc(us->cap*sizeof(UpdateSetEntry));
+	us->array = umalloc(us->cap*sizeof(UpdateSetEntry));
 	if (!us->array) {
 		us->cap = 0;
 		return false;
@@ -642,12 +475,12 @@ dgetsubstr(const Document *d, char *start, char *end)
 	assert(start <= end);
 	const size_t gapsize = d->curright - d->curleft;
 	if (end <= d->curleft || d->curright <= start) {
-		char *ret = malloc(end - start + 1);
+		char *ret = umalloc(end - start + 1);
 		memcpy(ret, start, end - start);
 		ret[end - start] = '\0';
 		return ret;
 	} else {
-		char *ret = malloc(end - start - gapsize + 1);
+		char *ret = umalloc(end - start - gapsize + 1);
 		memcpy(ret, start, d->curleft - start);
 		memcpy(ret + (d->curleft - start), d->curright, end - d->curright);
 		ret[end - start - gapsize] = '\0';
@@ -768,7 +601,7 @@ void
 einit()
 {
 	/* if we can't initialise the document then it's probably best we give up entirely */
-	char *buf = malloc(10);
+	char *buf = umalloc(10);
 	if (!buf) {
 		printsyserror("Could not initialize the document");
 		exit(1);
@@ -982,7 +815,7 @@ dwritefile(const Document *d, const char *path)
 	size_t leftlen = d->curleft - d->bufstart;
 	size_t rightlen = d->bufend - d->curright;
 	size_t len = leftlen + rightlen;
-	char *buf = malloc(len);
+	char *buf = umalloc(len);
 	if (!buf) {
 		printsyserror("Could not write to file \"%s\", out of memory", path);
 		return false;
@@ -1027,7 +860,7 @@ ereadfromfile(const char *path)
 	}
 	rewind(file);
 	size_t alloclen = len+UTF_SIZ;
-	char *buf = malloc(alloclen);
+	char *buf = umalloc(alloclen);
 	if (!buf) {
 		printsyserror("Could not allocate new buffer to read file \"%s\"", path);
 		fclose(file);

@@ -79,12 +79,11 @@ typedef union {
 	const char *s;
 } Arg;
 
-void die(const char *, ...);
+void udie(const char *, ...);
 void redraw(void);
 
 void sendbreak(const Arg *);
 
-int tattrset(int);
 void tnew(int, int);
 void tresize(int, int);
 
@@ -96,9 +95,9 @@ void selextend(int, int, int, int);
 
 size_t utf8encode(Rune, char *);
 
-void *xmalloc(size_t);
-void *xrealloc(void *, size_t);
-char *xstrdup(char *);
+void *umalloc(size_t);
+void *urealloc(void *, size_t);
+char *ustrdup(char *);
 
 /* config.h globals */
 extern char *utmp;

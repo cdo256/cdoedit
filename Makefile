@@ -35,7 +35,7 @@ clean:
 dist: clean
 	mkdir -p cdoedit-$(VERSION)
 	cp -R LICENSE Makefile README config.mk\
-		config.def.h arg.h cdoedit.h win.h $(SRC)\
+		config.def.h arg.h cdoedit.h win.h util.h $(SRC)\
 		cdoedit-$(VERSION)
 	tar -cf - cdoedit-$(VERSION) | gzip > cdoedit-$(VERSION).tar.gz
 	rm -rf cdoedit-$(VERSION)

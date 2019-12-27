@@ -30,7 +30,7 @@ static unsigned int xfps = 120;
 static unsigned int actionfps = 30;
 
 /*
- * blinking timeout (set to 0 to disable blinking) for the terminal blinking
+ * blinking timeout (set to 0 to disable blinking) for the blinking
  * attribute.
  */
 static unsigned int blinktimeout = 800;
