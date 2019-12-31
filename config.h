@@ -100,6 +100,7 @@ static Shortcut shortcuts[] = {
 	/* modmask          modval                keysym          function        argument */
 	{ DEFAULT_MASK,     0,                    XK_Tab,         changeindent,   {.i = +1} },
 	{ DEFAULT_MASK,     SHIFT,                XK_Tab,         changeindent,   {.i = -1} },
+	{ IGNORE_SHIFT,     0,                    XK_ISO_Left_Tab, changeindent,  {.i = -1} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_Home,        zoomreset,      {.f =  0} },
 	{ IGNORE_SHIFT,     CTRL,                 XK_Num_Lock,    numlock,        {.i =  0} },
 	{ IGNORE_SHIFT,     0,                    XK_Return,      newline,        {.i =  0} },
