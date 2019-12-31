@@ -42,7 +42,6 @@ cdoedit.c handles just the grid of glyphys that form the display buffer.
 editor.c manages the gap buffer and has convenient edit operations. This file is brand new since the st fork.
 x.c does all the interaction with the xserver. This file is mostly unchanged since the st fork.
 
-
 The Gap Buffer
 ==============
 The core of the Document structure in editor.c is a gap buffer. This stores all the characters in the document
@@ -96,12 +95,12 @@ too small and the whole buffer must be reallocated and the right section must be
 buffer. This can be mitigated by doing the reallocation during idle time or eleminated entirely by taking
 advantage of virtual memory.
 
-### Mitigating the reallocation spike ###
 The simplest way to mitigate this is to preemptively grow the buffer during idle time before the buffer is actually
 needed. This could be done after a keypress in anticipation of the next, before calling select() in the main loop,
 or after a certain period of inactivity.
 
-### Eliminating the reallocation spike entirely ###
+Eliminating the reallocation spike
+==================================
 The reallocation spike is fundamental to the data-structure and forces us to make a trade off between space and
 worst-case latency of a key-press. Either we start with a buffer much larger to accomodate most of the expansion
 and hog much more memory than we need or we keep the buffer tight but take the ux hit of more frequent reallocation
@@ -126,7 +125,46 @@ This not only solves the reallocation spike problem but actually reduces the mem
 be at most file_len + page_size * 2 instead of file_len * 2 which could make a difference on memory-constrained
 systems but won't matter at all in most cases.
 
-This leaves us with two relared questions:
+This leaves us with two related questions:
  1. Can we get this to play nicely with malloc?
  2. How do we decide size and location in memory?
+
+This unfortunately doesn't appear to be currently possible in the current version of Linux (as of December 2019).
+Since there's no way to reserve the gap pages so that (A) the pages cannot be reused by malloc and (B) these pages
+don't count toward the total system memory usage. These points could be remedied by simply telling malloc to not
+allocate on our turf but there doesn't seem to be an easy way to do this that's also robust enough to not break
+with some internal change to libc's malloc. I've looked for allocation libraries that can do this but they appear
+to either not exist anywhere or just not exist on GitHub. Point B is a problem because otherwise the kernel will
+just refuse to allocate the buffer spitting out ENOMEM.
+
+Alternatively, a reverse reallocator could be written that would allow for reallocation which would keep the
+pages at the end of the allocated block instead of at the beginning (as realloc() currently does). This currently
+also doesn't appear to exist anywhere so it'd have to be a project for a future data.
+
+The story on Windows is a lot more optimistic. It's a simple case of calling VirtualAlloc() with MEM_RESERVE but
+delay committing the memory until it's actually needed. This appears to do exactly what we want with no caveats!
+One of the few cases where Windows is actually better than Linux.
+
+Because of the difficulty in implementing this on Linux, and because the gain is so slight with the kind of files
+I usually edit, I've decided to leave this as an exercise for the reader.
+
+The Update Set
+==============
+Because I found I was repeating a lot of the same code to update various utility pointers in the Document structure,
+I decided to write a structure of pointers to keep track of them and functions to update the pointers when the
+document four key pointers (bufstart, gapleft, gapright, and bufend) changes. This can currently happen in one of
+four situations:
+ 1. The buffer is reallocated to grow the gap.
+ 2. The gap is moved due to navigation (navigation means cursor position change).
+ 3. Some text is inserted into the buffer.
+ 4. Some text is deleted from the buffer.
+
+It's worth mentioning at this point using document indexes instead of pointers would allow situations 1 and 2 to
+not require any additional updates. Specifically these indexes would have to be indexes to left ++ right (ie. the
+the buffer with the gap removed). This means that when the gap changes size (situation 1) or moves (situation 2),
+the index will still refer to the same point. The reason why I chose pointers instead of indexes is for simplicity,
+looking up the character from a pointer address just requires a bounds check. Indexes would likely be similar in
+most other ways.
+
+The solution I employed is a multiset of pointers to update. 
 
