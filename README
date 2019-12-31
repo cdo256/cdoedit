@@ -166,5 +166,18 @@ the index will still refer to the same point. The reason why I chose pointers in
 looking up the character from a pointer address just requires a bounds check. Indexes would likely be similar in
 most other ways.
 
-The solution I employed is a multiset of pointers to update. 
+The solution I employed is a (multi-)set of all the active pointers to the document. Whenever one of the above four
+situations occurs. All of the pointers to the document are updated. In order for this to work, the following data-
+structure invariants must be maintained:
+ 1. All pointers in the update set must be valid and point to pointers that point to the document that owns the
+  update set.
+ 2. Whenever one of the four situations occurs, the corresponding dupdateon[a-z]*() functions should be called
+  before any reads/writes to the pointers pointed to by pointers in the update set.
+ 
+The reason why multiset instead of set is to make add and remove symmetric. For example in a normal (not multi) set:
 
+ ({1,2,3} u {1}) \ {1} = {1,2,3} \ {1} = {2,3}
+
+But in a multiset union 'u' and set difference '\':
+
+ ({1,2,3} u {1}) \ {1} = {1,1,2,3} \ {1} = {1,2,3}
