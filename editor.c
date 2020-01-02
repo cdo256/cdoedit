@@ -370,10 +370,9 @@ int
 dgetcol(const Document *d, const char *pos)
 {
 	assert_valid_pos(d, pos);
-	if (pos == d->curleft) pos = d->curright;
 	const char *q;
 	int col = 0;
-	if (pos > d->curright) {
+	if (pos >= d->curright) {
 		assert_valid_read_range(d, d->curright, pos);
 		q = memrchr(d->curright, '\n', pos - d->curright);
 		if (q) {
@@ -381,15 +380,15 @@ dgetcol(const Document *d, const char *pos)
 			goto walk;
 		}
 	}
-	assert_valid_read_range(d, d->bufstart, d->curleft);
-	q = memrchr(d->bufstart, '\n', d->curleft - d->bufstart);
+	assert_valid_read_range(d, d->bufstart, pos);
+	q = memrchr(d->bufstart, '\n', pos - d->bufstart);
 	if (!q) q = d->bufstart;
 	else q++;
 walk:
 	for (;;) {
 		if (0 == POSCMP(d, q, pos)) return col;
 		Rune r = dreadchar(d, q, &q, +1);
-		if (r == '\t') col = (col+7) & 7;
+		if (r == '\t') col = ((col+8) & ~7);
 		else if (isprint(r)) col++;
 		else if (r == RUNE_EOF) return col;
 	}
@@ -403,7 +402,7 @@ dgetposnearcol(const Document *d, const char *linestart, int col)
 	while (c < col) {
 		Rune r = dreadchar(d, pos, &q, +1);
 		if (r == '\n') break;
-		else if (r == '\t') c = (c+7) & 7;
+		else if (r == '\t') c = ((c+8) & ~7);
 		else if (isprint(r)) c++;
 		else if (r == RUNE_EOF) return (char *)pos;
 		pos = q;
