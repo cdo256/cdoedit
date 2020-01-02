@@ -117,8 +117,10 @@ static Shortcut shortcuts[] = {
 	{ DEFAULT_MASK,     CTRL,                 'X',            clipcut,        {.i =  0} },
 	{ DEFAULT_MASK,     CTRL,                 'x',            clipcut,        {.i =  0} },
 
-	/* navigation */
+	/* navigation & selection */
 	/* modmask          modval                keysym          function        argument */
+	{ IGNORE_SHIFT,     CTRL,                 'A',            selectdocument, {.i =  0} },
+	{ IGNORE_SHIFT,     CTRL,                 'a',            selectdocument, {.i =  0} },
 	{ DEFAULT_MASK,     0,                    XK_Home,        navline,        {.i = -1} },
 	{ DEFAULT_MASK,     SHIFT,                XK_Home,        navline,        {.i = -2} },
 	{ DEFAULT_MASK,     0,                    XK_End,         navline,        {.i = +1} },

@@ -9,11 +9,11 @@ void ewrite(Rune r);
 void ewritestr(uchar *str, size_t size);
 void edraw(Line *line, int colc, int rowc, int *curcol, int *currow);
 void ejumptoline(long line);
-
 void changeindent(const Arg *);
 void deletechar(const Arg *);
 void deleteword(const Arg *);
 void deleterow(const Arg *);
+void selectdocument(const Arg *);
 void navchar(const Arg *);
 void navdocument(const Arg *);
 void navline(const Arg *);

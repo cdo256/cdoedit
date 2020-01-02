@@ -741,6 +741,14 @@ deleterow(const Arg *arg)
 }
 
 void
+selectdocument(const Arg *dummy)
+{
+	(void)dummy;
+	doc.selanchor = doc.bufstart;
+	dnavigate(&doc, doc.bufend, true);
+}
+
+void
 navchar(const Arg *arg)
 {
 	char *pos = dwalkrune(&doc, doc.curleft, SIGN(arg->i));
