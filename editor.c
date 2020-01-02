@@ -643,49 +643,44 @@ void
 edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 {
 	dscroll(&doc, rowc);
-
 	const char *p = doc.renderstart;
 	Glyph g;
-	bool firstpass = true;
+	int r = 0, c = 0;
 	bool insel = doc.selanchor && doc.selanchor < doc.renderstart;
-	for (int r = 0; r < rowc; r++) {
-		bool endofline = false;
-		bool tab = false;
-		for (int c = 0; c < colc; c++) {
-			if (0 == POSCMP(&doc, p, doc.selanchor) && firstpass) insel ^= 1;
-			if (0 == POSCMP(&doc, p, doc.curleft) && firstpass) {
-				*currow = endofline ? r+1 : r;
-				*curcol = endofline ? 0 : c;
-				if (doc.selanchor) insel ^= 1;
-			}
-			if (0 == POSCMP(&doc, p, doc.bufend) || endofline || tab) {
-				g.u = ' ';
-				firstpass = false;
-			} else {
-				g.u = dreadchar(&doc, p, &p, +1);
-				firstpass = true;
-			}
-			if (tab && (c & 7) == 0) {
-				if (0 == POSCMP(&doc, p, doc.curleft)) {
-					*currow = r;
-					*curcol = c+1;
-				}
-				tab = false;
-			}
-			if (g.u == '\n') {
-				endofline = true;
-				g.u = ' ';
-			} else if (g.u == '\t') {
-				tab = true;
-				g.u = ' ';
-			}
-			g.mode = 0;
-			if (insel && !endofline) {
-				g.fg = 0; g.bg = 1;
-			} else {
-				g.fg = 1; g.bg = 0;
-			}
+	for (r = 0; r < rowc; r++) {
+		memset(line[r], 0, colc * sizeof(Glyph));
+	}
+	r = 0;
+	while (r < rowc) {
+		if (0 == POSCMP(&doc, p, doc.selanchor)) insel ^= 1;
+		if (0 == POSCMP(&doc, p, doc.curleft)) {
+			*currow = r;
+			*curcol = c;
+			if (doc.selanchor) insel ^= 1;
+		}
+		g.u = dreadchar(&doc, p, &p, +1);
+		g.fg = insel ? 0 : 1;
+		g.bg = insel ? 1 : 0;
+		g.mode = 0;
+		if (g.u == RUNE_EOF) break;
+		if (g.u == '\n') {
+			g.u = ' ';
 			line[r][c] = g;
+			c = 0; r++;
+		} else if (g.u == '\t') {
+			g.u = ' ';
+			do {
+				line[r][c] = g;
+				c++;
+			} while (c < colc && (c & 7) != 0);
+		} else {
+			line[r][c] = g;
+			c++;
+		}
+		if (c >= colc) {
+			c = 0;
+			r++;
+			if (r >= rowc) break;
 		}
 	}
 }
@@ -898,6 +893,6 @@ load(const Arg *arg)
 void
 ejumptoline(long line)
 {
-	char* pos = dwalkrow(&doc, doc.bufstart, line-1);
+	char *pos = dwalkrow(&doc, doc.bufstart, line-1);
 	dnavigate(&doc, pos, false);
 }
