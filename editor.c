@@ -71,7 +71,7 @@ typedef struct {
 static Document doc;
 char *scratchbuf = NULL;
 size_t scratchlen = 0;
-char* filename = NULL;
+char *filename = NULL;
 
 bool
 iswordboundry(Rune a, Rune b)

@@ -202,6 +202,7 @@ static DC dc;
 static XWindow xw;
 static XSelection xsel;
 static TermWindow win;
+extern char *filename;
 
 /* Font Ring Cache */
 enum {
@@ -1604,8 +1605,6 @@ usage(void)
 {
 	udie("usage: %s [-l lineno] filename\n", argv0);
 }
-
-extern char* filename;
 
 int
 main(int argc, char *argv[])
