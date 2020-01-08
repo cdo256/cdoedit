@@ -173,7 +173,7 @@ usadd(UpdateSet *us, char **ptr, UpdateSetEntryBehaviour behaviour)
 			return;
 		}
 	}
-	grow((void**)&us->array, &us->cap, us->count+1, sizeof(us->array[0]));
+	us->array = grow(us->array, &us->cap, us->count+1, sizeof(us->array[0]));
 	us->array[us->count].ptr = ptr;
 	us->array[us->count].count = 1;
 	us->array[us->count].behaviour = behaviour;
@@ -320,8 +320,8 @@ dgrowgap(Document *d, size_t change)
 	size_t targetsize = UTF_SIZ + change + (d->curleft - d->bufstart) + (d->bufend - d->curright);
 	size_t oldsize = d->bufend - d->bufstart;
 	size_t newsize = oldsize;
-	char *newbuf = d->bufstart;
-	if (grow((void**)&newbuf, &newsize, targetsize, 1)) {
+	char *newbuf = grow(d->bufstart, &newsize, targetsize, 1);
+	if (newbuf != d->bufstart) {
 		memmove(newbuf + newsize - (d->bufend - d->curright), newbuf + (d->curright - d->bufstart), d->bufend - d->curright);
 		dupdateongrow(d, newbuf, newbuf + newsize);
 	}
@@ -567,20 +567,22 @@ dfree(/* move */ Document *d)
 		*d->us.array[i].ptr = NULL;
 	}
 	free(d->us.array);
+	d->us.array = 0;
 	d->us.cap = 0;
 	d->us.count = 0;
 }
 
 void
-dmove(Document *dst, /* move */ Document *src)
+dmove(/* create */ Document *dst, /* move */ Document *src)
 {
 	*dst = *src;
 	for (size_t i = 0; i < dst->us.count; i++) {
 		/* this is the point where you wish you wish you were programming in asm
-		   so you didn't have to deal with c's retarded pointer arithmetic */
+		   so you didn't have to deal with c's stupid pointer arithmetic */
 		/* cast everything to char *'s then cast back before assigning in case
-		   we're working on a machine with unaliged pointers */
-		dst->us.array[i].ptr = (char **)((char *)dst->us.array[i].ptr + ((char *)dst - (char *)src));
+		   we're working on a machine with unaliged struct members (can't think of an example though) */
+		if ((char *)src <= (char *)dst->us.array[i].ptr && (char*)dst->us.array[i].ptr < (char *)src + sizeof(Document))
+			dst->us.array[i].ptr = (char **)((char *)dst->us.array[i].ptr + ((char *)dst - (char *)src));
 	}
 }
 
