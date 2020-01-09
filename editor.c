@@ -357,16 +357,6 @@ dinsert(Document *d, char *pos, char *insertstr, size_t len)
 	usremv(&d->us, &pos);
 }
 
-void
-dinsertchar(Document *d, char *pos, Rune r)
-{
-	usadd(&d->us, &pos, 0);
-	char buf[UTF_SIZ];
-	size_t len = utf8encode(r, buf);
-	dinsert(d, pos, buf, len);
-	usremv(&d->us, &pos);
-}
-
 bool
 disparagraphboundry(const Document *d, const char *pos)
 {
@@ -529,17 +519,6 @@ ddeleterange(Document *d, char *left, char *right)
 }
 
 void
-ddeletesel(Document *d)
-{
-	assert_valid_pos(d, d->selanchor);
-	if (d->selanchor <= d->curleft)
-		ddeleterange(d, d->selanchor, d->curleft);
-	else
-		ddeleterange(d, d->curright, d->selanchor);
-	d->selanchor = NULL;
-}
-
-void
 dscroll(Document *d, int rowc)
 {
 	d->renderstart = dwalkrow(d, d->renderstart, 0);
@@ -635,7 +614,7 @@ dpointertoindex(const Document *d, const char *p)
 size_t
 dgetrangelength(const Document *d, const char *left, const char *right)
 {
-	if (right <= d->curleft || left <= d->curright) {
+	if (right <= d->curleft || d->curright <= left) {
 		return right - left;
 	} else return right - left - (d->curright - d->curleft);
 }
@@ -643,7 +622,7 @@ dgetrangelength(const Document *d, const char *left, const char *right)
 void
 dgetrange(const Document *d, const char *left, const char *right, /*output */ char *buf)
 {
-	if (right <= d->curleft || left <= d->curright) {
+	if (right <= d->curleft || d->curright <= left) {
 		memcpy(buf, left, right - left);
 	} else {
 		memcpy(buf, left, d->curleft - left);
@@ -656,7 +635,7 @@ drangeeq(const Document *d, const char *left, const char *right, const char *str
 {
 	bool r = (dgetrangelength(d, left, right) == len);
 	if (r) {
-		if (right <= d->curleft || left <= d->curright) {
+		if (right <= d->curleft || d->curright <= left) {
 			r = (0 == memcmp(left, string, len));
 		} else {
 			r = (0 == memcmp(left, string, d->curleft - left)) ||
@@ -688,7 +667,7 @@ actiondo(Action a, Document *d)
 	case DELETE: {
 		char *left = dindextopointer(d, a.position);
 		char *right = dindextopointer(d, a.position + a.size);
-		assert(0 == drangeeq(d, left, right, a.data, a.size));
+		assert(drangeeq(d, left, right, a.data, a.size));
 		ddeleterange(d, left, right);
 	} break;
 	case INSERT: {
@@ -750,18 +729,54 @@ hfree(/* move */ History *h)
 }
 
 void
-einit()
+edeleterange(char *left, char *right)
 {
-	/* if we can't initialise the document then it's probably best we give up entirely */
-	char *buf = umalloc(10);
-	if (!buf) {
-		printsyserror("Could not initialize the document");
-		exit(1);
-	}
-	if (!dinit(&doc, buf, 10, 0)) {
-		exit(1);
-	}
-	hinit(&history, 16);
+	Action a = {
+		.type = DELETE,
+		.position = dpointertoindex(&doc, left),
+		.size = dgetrangelength(&doc, left, right),
+	};
+	a.data = malloc(a.size);
+	dgetrange(&doc, left, right, a.data);
+	hrecord(&history, a);
+	actiondo(a, &doc);
+}
+
+
+void
+einsert(char *position, char *data, size_t length)
+{
+	Action a = {
+		.type = INSERT,
+		.position = dpointertoindex(&doc, position),
+		.data = malloc(length),
+		.size = length,
+	};
+	memcpy(a.data, data, length);
+	hrecord(&history, a);
+	actiondo(a, &doc);
+}
+
+
+void
+einsertchar(char *pos, Rune r)
+{
+	usadd(&doc.us, &pos, 0);
+	char buf[UTF_SIZ];
+	size_t len = utf8encode(r, buf);
+	einsert(pos, buf, len);
+	usremv(&doc.us, &pos);
+}
+
+void
+edeletesel()
+{
+	assert_valid_pos(&doc, doc.selanchor);
+	if (doc.selanchor <= doc.curleft)
+		edeleterange(doc.selanchor, doc.curleft);
+	else
+		edeleterange(doc.curright, doc.selanchor);
+	doc.selanchor = NULL;
 }
 
 char *
@@ -782,15 +797,94 @@ egetline()
 void
 ewrite(Rune r)
 {
-	if (doc.selanchor) ddeletesel(&doc);
-	dinsertchar(&doc, doc.curleft, r);
+	if (doc.selanchor) edeletesel(&doc);
+	einsertchar(doc.curleft, r);
 }
 
 void
 ewritestr(uchar *str, size_t size)
 {
-	if (doc.selanchor) ddeletesel(&doc);
-	dinsert(&doc, doc.curleft, (char *)str, size);
+	if (doc.selanchor) edeletesel(&doc);
+	einsert(doc.curleft, (char *)str, size);
+}
+
+void
+ejumptoline(long line)
+{
+	char *pos = dwalkrow(&doc, doc.bufstart, line-1);
+	dnavigate(&doc, pos, false);
+}
+
+bool
+ewritefile(const char *path)
+{
+	size_t leftlen = doc.curleft - doc.bufstart;
+	size_t rightlen = doc.bufend - doc.curright;
+	size_t len = leftlen + rightlen;
+	char *buf = umalloc(len);
+	if (!buf) {
+		printsyserror("Could not write to file \"%s\", out of memory", path);
+		return false;
+	}
+	memcpy(buf, doc.bufstart, leftlen);
+	memcpy(buf+leftlen, doc.curright, rightlen);
+	FILE *file = fopen(path, "w");
+	if (!file) {
+		printsyserror("Could not open file \"%s\" for writing", path);
+		free(buf);
+		return false;
+	}
+	if (!fwrite(buf, 1, len, file)) {
+		printsyserror("Could open but not write to file \"%s\"", path);
+		free(buf);
+		fclose(file);
+		return false;
+	}
+	free(buf);
+	fclose(file);
+	return true;
+}
+
+bool
+ereadfromfile(const char *path)
+{
+	FILE *file = fopen(path, "r");
+	if (!file) {
+		printsyserror("Could not open file \"%s\" for reading", path);
+		return false;
+	}
+	if (-1 == fseek(file, 0, SEEK_END)) {
+		printsyserror("Cannot seek file \"%s\"", path);
+		fclose(file);
+		return false;
+	}
+	size_t len = ftell(file);
+	if (!~len) {
+		printsyserror("Cannot get length of file \"%s\"", path);
+		fclose(file);
+		return false;
+	}
+	rewind(file);
+	size_t alloclen = len+UTF_SIZ;
+	char *buf = umalloc(alloclen);
+	if (!buf) {
+		printsyserror("Could not allocate new buffer to read file \"%s\"", path);
+		fclose(file);
+		return false;
+	}
+	if (len > fread(buf+(alloclen-len), 1, len, file)) {
+		printsyserror("Could open, and get length of the file but could not read file \"%s\"", path);
+		free(buf);
+		fclose(file);
+		return false;
+	}
+	fclose(file);
+	if (!dreinit(&doc, buf, alloclen, len)) {
+		fprintf(stderr, "Could open and read document but could not init the document\n");
+		free(buf);
+		return false;
+	}
+	return true;
 }
 
 void
@@ -840,6 +934,21 @@ edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 }
 
 void
+einit()
+{
+	/* if we can't initialise the document then it's probably best we give up entirely */
+	char *buf = umalloc(10);
+	if (!buf) {
+		printsyserror("Could not initialize the document");
+		exit(1);
+	}
+	if (!dinit(&doc, buf, 10, 0)) {
+		exit(1);
+	}
+	hinit(&history, 16);
+}
+
+void
 changeindent(const Arg *arg)
 {
 	char *selleft = doc.selanchor ? MIN(doc.selanchor, doc.curleft) : doc.curleft;
@@ -851,8 +960,8 @@ changeindent(const Arg *arg)
 	char *p = dwalkrow(&doc, selleft, 0);
 	usadd(&doc.us, &p, 0);
 	for (; p < doc.bufend && p <= selright; p = dwalkrow(&doc, p, +1)) {
-		if (arg->i > 0) dinsertchar(&doc, p, '\t');
-		else if (dreadchar(&doc, p, &dmy, +1) == '\t') ddeleterange(&doc, p, p + 1);
+		if (arg->i > 0) einsertchar(p, '\t');
+		else if (dreadchar(&doc, p, &dmy, +1) == '\t') edeleterange(p, p + 1);
 	}
 	usremv(&doc.us, &p);
 	usremv(&doc.us, &selleft);
@@ -863,11 +972,11 @@ void
 deletechar(const Arg *arg)
 {
 	if (doc.selanchor) {
-		ddeletesel(&doc);
+		edeletesel();
 	} else if (arg->i > 0) {
-		ddeleterange(&doc, doc.curright, dwalkrune(&doc, doc.curright, arg->i));
+		edeleterange(doc.curright, dwalkrune(&doc, doc.curright, arg->i));
 	} else if (arg->i < 0) {
-		ddeleterange(&doc, dwalkrune(&doc, doc.curleft, arg->i), doc.curleft);
+		edeleterange(dwalkrune(&doc, doc.curleft, arg->i), doc.curleft);
 	}
 }
 
@@ -875,11 +984,11 @@ void
 deleteword(const Arg *arg)
 {
 	if (doc.selanchor) {
-		ddeletesel(&doc);
+		edeletesel();
 	} else if (arg->i > 0) {
-		ddeleterange(&doc, doc.curright, dwalkword(&doc, doc.curright, arg->i));
+		edeleterange(doc.curright, dwalkword(&doc, doc.curright, arg->i));
 	} else if (arg->i < 0) {
-		ddeleterange(&doc, dwalkword(&doc, doc.curleft, arg->i), doc.curleft);
+		edeleterange(dwalkword(&doc, doc.curleft, arg->i), doc.curleft);
 	}
 }
 
@@ -888,9 +997,9 @@ deleterow(const Arg *arg)
 {
 	(void)arg;
 	if (doc.selanchor) {
-		ddeletesel(&doc);
+		edeletesel();
 	} else {
-		ddeleterange(&doc, dwalkrow(&doc, doc.curleft, 0), dwalkrow(&doc, doc.curleft, +1));
+		edeleterange(dwalkrow(&doc, doc.curleft, 0), dwalkrow(&doc, doc.curleft, +1));
 	}
 }
 
@@ -962,79 +1071,7 @@ void
 newline(const Arg *arg)
 {
 	(void)arg;
-	dinsertchar(&doc, doc.curleft, '\n');
-}
-
-bool
-dwritefile(const Document *d, const char *path)
-{
-	size_t leftlen = d->curleft - d->bufstart;
-	size_t rightlen = d->bufend - d->curright;
-	size_t len = leftlen + rightlen;
-	char *buf = umalloc(len);
-	if (!buf) {
-		printsyserror("Could not write to file \"%s\", out of memory", path);
-		return false;
-	}
-	memcpy(buf, d->bufstart, leftlen);
-	memcpy(buf+leftlen, d->curright, rightlen);
-	FILE *file = fopen(path, "w");
-	if (!file) {
-		printsyserror("Could not open file \"%s\" for writing", path);
-		free(buf);
-		return false;
-	}
-	if (!fwrite(buf, 1, len, file)) {
-		printsyserror("Could open but not write to file \"%s\"", path);
-		free(buf);
-		fclose(file);
-		return false;
-	}
-	free(buf);
-	fclose(file);
-	return true;
-}
-
-bool
-ereadfromfile(const char *path)
-{
-	FILE *file = fopen(path, "r");
-	if (!file) {
-		printsyserror("Could not open file \"%s\" for reading", path);
-		return false;
-	}
-	if (-1 == fseek(file, 0, SEEK_END)) {
-		printsyserror("Cannot seek file \"%s\"", path);
-		fclose(file);
-		return false;
-	}
-	size_t len = ftell(file);
-	if (!~len) {
-		printsyserror("Cannot get length of file \"%s\"", path);
-		fclose(file);
-		return false;
-	}
-	rewind(file);
-	size_t alloclen = len+UTF_SIZ;
-	char *buf = umalloc(alloclen);
-	if (!buf) {
-		printsyserror("Could not allocate new buffer to read file \"%s\"", path);
-		fclose(file);
-		return false;
-	}
-	if (len > fread(buf+(alloclen-len), 1, len, file)) {
-		printsyserror("Could open, and get length of the file but could not read file \"%s\"", path);
-		free(buf);
-		fclose(file);
-		return false;
-	}
-	fclose(file);
-	if (!dreinit(&doc, buf, alloclen, len)) {
-		fprintf(stderr, "Could open and read document but could not init the document\n");
-		free(buf);
-		return false;
-	}
-	return true;
+	einsertchar(doc.curleft, '\n');
 }
 
 void
@@ -1042,7 +1079,7 @@ save(const Arg *arg)
 {
 	(void)arg;
 	/* error is outputted by the function so we're covered */
-	dwritefile(&doc, filename);
+	ewritefile(filename);
 }
 
 void
@@ -1064,11 +1101,4 @@ redo(const Arg *dummy)
 {
 	(void)dummy;
 	hredo(&history, &doc);
-}
-
-void
-ejumptoline(long line)
-{
-	char *pos = dwalkrow(&doc, doc.bufstart, line-1);
-	dnavigate(&doc, pos, false);
 }
