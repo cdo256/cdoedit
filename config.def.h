@@ -116,6 +116,13 @@ static Shortcut shortcuts[] = {
 	{ DEFAULT_MASK,     CTRL,                 'X',            clipcut,        {.i =  0} },
 	{ DEFAULT_MASK,     CTRL,                 'x',            clipcut,        {.i =  0} },
 
+	/* history */
+	/* modmask          modval                keysym          function        argument */
+	{ DEFAULT_MASK,     CTRL,                 'Z',            undo,           {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'z',            undo,           {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'Y',            redo,           {.i =  0} },
+	{ DEFAULT_MASK,     CTRL,                 'y',            redo,           {.i =  0} },
+
 	/* navigation */
 	/* modmask          modval                keysym          function        argument */
 	{ DEFAULT_MASK,     0,                    XK_Home,        navline,        {.i = -1} },

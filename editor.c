@@ -21,6 +21,11 @@ typedef enum {
 	SLIDEONNAVIGATE = 64,
 } UpdateSetEntryBehaviour;
 
+typedef enum {
+	INSERT,
+	DELETE,
+} ActionType;
+
 #define ISSELECT(a) ((a) == -2 || (a) == 2)
 #define POSCMP(d, a, b) ( \
 	((a) >= (d)->curright ? (a) - ((d)->curright - (d)->curleft) : (a)) - \
@@ -63,14 +68,22 @@ typedef struct {
 } Document;
 
 typedef struct {
-	int line;
-	int pos;
-} Pos;
+	ActionType type;
+	size_t position;
+	size_t size;
+	char *data;
+} Action;
+
+typedef struct {
+	Action *a;
+	size_t count;
+	size_t max;
+	size_t cur;
+} History;
 
 /* Globals */
 static Document doc;
-char *scratchbuf = NULL;
-size_t scratchlen = 0;
+static History history;
 char *filename = NULL;
 
 bool
@@ -598,6 +611,144 @@ dreinit(Document *old, char *buf, size_t buflen, size_t contentlen)
 	return true;
 }
 
+/* index means index to character in the document. Ie. excluding the gap. */
+char *
+dindextopointer(const Document *d, size_t index)
+{
+	char *p = index <= (size_t)(d->curleft - d->bufstart) ?
+		d->bufstart + index :
+		d->bufstart + (index + (d->curright - d->curleft));
+	assert_valid_pos(d, p);
+	return p;
+}
+
+size_t
+dpointertoindex(const Document *d, const char *p)
+{
+	assert_valid_pos(d, p);
+	size_t index = p <= d->curleft ?
+		p - d->bufstart :
+		(p - d->bufstart) - (d->curright - d->curleft);
+	return index;
+}
+
+size_t
+dgetrangelength(const Document *d, const char *left, const char *right)
+{
+	if (right <= d->curleft || left <= d->curright) {
+		return right - left;
+	} else return right - left - (d->curright - d->curleft);
+}
+
+void
+dgetrange(const Document *d, const char *left, const char *right, /*output */ char *buf)
+{
+	if (right <= d->curleft || left <= d->curright) {
+		memcpy(buf, left, right - left);
+	} else {
+		memcpy(buf, left, d->curleft - left);
+		memcpy(buf + (d->curleft - left), d->curright, right - d->curright);
+	}
+}
+
+bool
+drangeeq(const Document *d, const char *left, const char *right, const char *string, size_t len)
+{
+	bool r = (dgetrangelength(d, left, right) == len);
+	if (r) {
+		if (right <= d->curleft || left <= d->curright) {
+			r = (0 == memcmp(left, string, len));
+		} else {
+			r = (0 == memcmp(left, string, d->curleft - left)) ||
+				(0 == memcmp(d->curright, string + (d->curleft - left), right - d->curright)); 
+		}
+	}
+	return r;
+}
+
+Action
+actionreverse(Action a)
+{
+	switch(a.type) {
+	case INSERT:
+		a.type = DELETE;
+		break;
+	case DELETE:
+		a.type = INSERT;
+		break;
+	default: fail();
+	}
+	return a;
+}
+
+void
+actiondo(Action a, Document *d)
+{
+	switch (a.type) {
+	case DELETE: {
+		char *left = dindextopointer(d, a.position);
+		char *right = dindextopointer(d, a.position + a.size);
+		assert(0 == drangeeq(d, left, right, a.data, a.size));
+		ddeleterange(d, left, right);
+	} break;
+	case INSERT: {
+		char *pos = dindextopointer(d, a.position);
+		dinsert(d, pos, a.data, a.size);
+	} break;
+	default: fail();
+	}
+}
+
+void
+hrecord(History *h, Action a)
+{
+	h->a = grow(h->a, &h->max, h->cur+1, sizeof(*h->a));
+	h->a[h->cur] = a;
+	h->cur++;
+	h->count = h->cur;
+}
+
+bool
+hundo(History *h, Document *d)
+{
+	if (h->cur > 0) {
+		h->cur--;
+		actiondo(actionreverse(h->a[h->cur]), d);
+		return true;
+	}
+	return false;
+}
+
+bool
+hredo(History *h, Document *d)
+{
+	if (h->cur < h->count) {
+		actiondo(h->a[h->cur], d);
+		h->cur++;
+		return true;
+	}
+	return false;
+}
+
+void
+hinit(History *h, size_t capacity)
+{
+	h->a = umalloc(capacity * sizeof(Action));
+	h->max = capacity;
+	h->count = 0;
+	h->cur = 0;
+}
+
+void
+hfree(/* move */ History *h)
+{
+	free(h->a);
+	h->a = 0;
+	h->count = 0;
+	h->max = 0;
+	h->cur = 0;
+}
+
 void
 einit()
 {
@@ -610,6 +761,7 @@ einit()
 	if (!dinit(&doc, buf, 10, 0)) {
 		exit(1);
 	}
+	hinit(&history, 16);
 }
 
 char *
@@ -898,6 +1050,20 @@ load(const Arg *arg)
 {
 	(void)arg;
 	ereadfromfile(filename);
+}
+
+void
+undo(const Arg *dummy)
+{
+	(void)dummy;
+	hundo(&history, &doc);
+}
+
+void
+redo(const Arg *dummy)
+{
+	(void)dummy;
+	hredo(&history, &doc);
 }
 
 void

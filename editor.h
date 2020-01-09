@@ -26,3 +26,5 @@ void new(const Arg *);
 void load(const Arg *);
 void save(const Arg *);
 void saveas(const Arg *);
+void undo(const Arg *);
+void redo(const Arg *);
