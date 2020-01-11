@@ -22,6 +22,7 @@ typedef enum {
 } UpdateSetEntryBehaviour;
 
 typedef enum {
+	NOP,
 	INSERT,
 	DELETE,
 } ActionType;
@@ -687,26 +688,28 @@ hrecord(History *h, Action a)
 	h->count = h->cur;
 }
 
-bool
+Action
 hundo(History *h, Document *d)
 {
+	Action a = { .type = NOP };
 	if (h->cur > 0) {
 		h->cur--;
-		actiondo(actionreverse(h->a[h->cur]), d);
-		return true;
+		a = actionreverse(h->a[h->cur]);
+		actiondo(a, d);
 	}
-	return false;
+	return a;
 }
 
-bool
+Action
 hredo(History *h, Document *d)
 {
+	Action a = { .type = NOP };
 	if (h->cur < h->count) {
-		actiondo(h->a[h->cur], d);
+		a = h->a[h->cur];
+		actiondo(a, d);
 		h->cur++;
-		return true;
 	}
-	return false;
+	return a;
 }
 
 void
@@ -813,6 +816,13 @@ ejumptoline(long line)
 {
 	char *pos = dwalkrow(&doc, doc.bufstart, line-1);
 	dnavigate(&doc, pos, false);
+}
+
+void
+eupdatecursor(Action a)
+{
+	if (a.type != NOP)
+		dnavigate(&doc, dindextopointer(&doc, a.position), false);
 }
 
 bool
@@ -1093,12 +1103,14 @@ void
 undo(const Arg *dummy)
 {
 	(void)dummy;
-	hundo(&history, &doc);
+	Action a = hundo(&history, &doc);
+	eupdatecursor(a);
 }
 
 void
 redo(const Arg *dummy)
 {
 	(void)dummy;
-	hredo(&history, &doc);
+	Action a = hredo(&history, &doc);
+	eupdatecursor(a);
 }
