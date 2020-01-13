@@ -1,5 +1,5 @@
 # cdoedit version
-VERSION = 0.8.2
+VERSION = 1.0
 
 # Customize below to fit your system
 
