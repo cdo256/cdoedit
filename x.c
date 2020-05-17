@@ -227,6 +227,7 @@ static double usedfontsize = 0;
 static double defaultfontsize = 0;
 
 static char *opt_line  = NULL;
+static char *opt_embed = NULL;
 static char *title = NULL;
 
 void
@@ -1603,7 +1604,7 @@ run(void)
 void
 usage(void)
 {
-	udie("usage: %s [-l lineno] filename\n", argv0);
+	udie("usage: %s [-e windowid] [-l lineno] filename\n", argv0);
 }
 
 int
@@ -1616,6 +1617,9 @@ main(int argc, char *argv[])
 	ARGBEGIN {
 	case 'l':
 		opt_line = EARGF(usage());
+		break;
+	case 'e':
+		opt_embed = EARGF(usage());
 		break;
 	case 'v':
 		udie("%s " VERSION "\n", argv0);
