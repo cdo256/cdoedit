@@ -863,11 +863,11 @@ bool
 ereadfromfile(const char *path)
 {
 	struct stat info;
-	if (!fstatat(AT_FDCWD, path, &info, 0)) {
+	if (fstatat(AT_FDCWD, path, &info, 0) == -1) {
 		printsyserror("Could not stat file \"%s\"", path);
 		return false;
 	}
-	if (S_ISREG(info.st_mode)) {
+	if (!S_ISREG(info.st_mode)) {
 		fprintf(stderr, "File \"%s\" is not a regular file.\n", path);
 		return false;
 	}
