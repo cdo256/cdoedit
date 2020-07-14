@@ -1639,13 +1639,12 @@ main(int argc, char *argv[])
 	cols = MAX(cols, 1);
 	rows = MAX(rows, 1);
 	tnew(cols, rows);
+	einit();
+	if (!ereadfromfile(filename)) {
+		return 1;
+	}
 	xinit(cols, rows);
 	xsetenv();
-	einit();
-	{
-		Arg arg = { .i = 0 };
-		load(&arg);
-	}
 	if (opt_line) {
 		long line;
 		if (1 != sscanf(opt_line, "%ld", &line) || line <= 0) {

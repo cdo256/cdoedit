@@ -9,6 +9,7 @@ void ewrite(Rune r);
 void ewritestr(uchar *str, size_t size);
 void edraw(Line *line, int colc, int rowc, int *curcol, int *currow);
 void ejumptoline(long line);
+bool ereadfromfile(const char *filename);
 void changeindent(const Arg *);
 void deletechar(const Arg *);
 void deleteword(const Arg *);

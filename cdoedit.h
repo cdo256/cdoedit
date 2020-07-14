@@ -1,5 +1,6 @@
 /* See LICENSE for license details. */
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
 #include <wchar.h>
