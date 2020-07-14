@@ -421,7 +421,7 @@ dgetposnearcol(const Document *d, const char *linestart, int col)
 char *
 dwalkword(const Document *d, const char *pos, int change)
 {
-	const char *q;	
+	const char *q;
 	Rune a = dreadchar(d, pos, &q, SIGN(change)), b;
 	if (a == RUNE_EOF) return (char *)pos;
 	do {
@@ -644,7 +644,7 @@ drangeeq(const Document *d, const char *left, const char *right, const char *str
 			r = (0 == memcmp(left, string, len));
 		} else {
 			r = (0 == memcmp(left, string, d->curleft - left)) ||
-				(0 == memcmp(d->curright, string + (d->curleft - left), right - d->curright)); 
+				(0 == memcmp(d->curright, string + (d->curleft - left), right - d->curright));
 		}
 	}
 	return r;

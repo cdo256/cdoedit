@@ -1540,12 +1540,12 @@ run(void)
 				continue;
 			udie("select failed: %s\n", strerror(errno));
 		}
-		
+
 		if (blinktimeout) {
 			if (!blinkset)
 				MODBIT(win.mode, 0, MODE_BLINK);
 		}
-		
+
 		xev = actionfps;
 
 		clock_gettime(CLOCK_MONOTONIC, &now);
