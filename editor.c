@@ -1,12 +1,16 @@
 /* See LICENSE for license details. */
 #define _GNU_SOURCE
-#include <string.h>
-#include <stdio.h>
+#include <assert.h>
+#include <ctype.h>
+#include <fcntl.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <ctype.h>
-#include <assert.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #include "util.c"
 #include "editor.h"
@@ -858,9 +862,18 @@ ewritefile(const char *path)
 bool
 ereadfromfile(const char *path)
 {
-	FILE *file = fopen(path, "r");
+	struct stat info;
+	if (!fstatat(AT_FDCWD, path, &info, 0)) {
+		printsyserror("Could not stat file \"%s\"", path);
+		return false;
+	}
+	if (S_ISREG(info.st_mode)) {
+		fprintf(stderr, "File \"%s\" is not a regular file.\n", path);
+		return false;
+	}
+	FILE *file = fopen(path, "rw");
 	if (!file) {
-		printsyserror("Could not open file \"%s\" for reading", path);
+		printsyserror("Could not open file \"%s\" for read-write", path);
 		return false;
 	}
 	if (-1 == fseek(file, 0, SEEK_END)) {
