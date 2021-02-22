@@ -523,11 +523,28 @@ ddeleterange(Document *d, char *left, char *right)
 	d->coldirty = true;
 }
 
+const char *
+dwalkvisibleline(Document *d, const char *pos, int colc)
+{
+	int col = 0;
+	unsigned c;
+	do {
+		c = dreadchar(d, pos, &pos, +1);
+		if (c == '\t') col = ((col+8) & ~7);
+		else if (c == RUNE_EOF || c == '\n') break;
+		else col++;
+	} while (col < colc);
+	return pos;
+}
+
 void
-dscroll(Document *d, int rowc)
+dscroll(Document *d, int colc, int rowc)
 {
 	d->renderstart = dwalkrow(d, d->renderstart, 0);
-	char *renderend = dwalkrow(d, d->renderstart, rowc);
+	const char *pos = d->renderstart;
+	for (int r = 0; r < rowc; r++)
+		pos = dwalkvisibleline(d, pos, colc);
+	const char *renderend = pos;
 	if (d->curleft < d->renderstart) {
 		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
 	} else if (d->curleft >= renderend) {
@@ -913,7 +930,7 @@ ereadfromfile(const char *path)
 void
 edraw(Line *line, int colc, int rowc, int *curcol, int *currow)
 {
-	dscroll(&doc, rowc);
+	dscroll(&doc, colc, rowc);
 	const char *p = doc.renderstart;
 	Glyph g;
 	int r = 0, c = 0;
