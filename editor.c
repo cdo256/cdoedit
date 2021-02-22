@@ -543,7 +543,7 @@ dscroll(Document *d, int colc, int rowc)
 {
 	d->renderstart = dwalkrow(d, d->renderstart, 0);
 	const char *pos = d->renderstart;
-	for (int r = 0; r < rowc; r++)
+	for (int r = 0; r < rowc && pos; r++)
 		pos = dwalkvisibleline(d, pos, colc);
 	const char *renderend = pos;
 	if (d->curleft < d->renderstart) {
