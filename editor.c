@@ -76,6 +76,7 @@ typedef struct {
 	ActionType type;
 	size_t position;
 	size_t size;
+	size_t curbefore, curafter;
 	char *data;
 } Action;
 
@@ -670,6 +671,9 @@ drangeeq(const Document *d, const char *left, const char *right, const char *str
 Action
 actionreverse(Action a)
 {
+	size_t curbefore = a.curafter;
+	a.curafter = a.curbefore;
+	a.curbefore = curbefore;
 	switch(a.type) {
 	case INSERT:
 		a.type = DELETE;
@@ -759,11 +763,13 @@ edeleterange(char *left, char *right)
 		.type = DELETE,
 		.position = dpointertoindex(&doc, left),
 		.size = dgetrangelength(&doc, left, right),
+		.curbefore = dpointertoindex(&doc, doc.curleft),
 	};
 	a.data = malloc(a.size);
 	dgetrange(&doc, left, right, a.data);
 	hrecord(&history, a);
 	actiondo(a, &doc);
+	a.curafter = dpointertoindex(&doc, doc.curleft);
 }
 
 
@@ -775,10 +781,12 @@ einsert(char *position, char *data, size_t length)
 		.position = dpointertoindex(&doc, position),
 		.data = malloc(length),
 		.size = length,
+		.curbefore = dpointertoindex(&doc, doc.curleft),
 	};
 	memcpy(a.data, data, length);
 	hrecord(&history, a);
 	actiondo(a, &doc);
+	a.curafter = dpointertoindex(&doc, doc.curleft);
 }
 
 
@@ -842,8 +850,7 @@ ejumptoline(long line)
 void
 eupdatecursor(Action a)
 {
-	if (a.type != NOP)
-		dnavigate(&doc, dindextopointer(&doc, a.position), false);
+	dnavigate(&doc, dindextopointer(&doc, a.curafter), false);
 }
 
 bool
