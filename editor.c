@@ -1001,7 +1001,8 @@ changeindent(const Arg *arg)
 	usadd(&doc.us, &p, 0);
 	for (; p < doc.bufend && p <= selright; p = dwalkrow(&doc, p, +1)) {
 		if (arg->i > 0) einsertchar(p, '\t');
-		else if (dreadchar(&doc, p, &dmy, +1) == '\t') edeleterange(p, p + 1);
+		else if (dreadchar(&doc, p, &dmy, +1) == '\t')
+			edeleterange(p, dwalkrune(&doc, p, +1));
 	}
 	usremv(&doc.us, &p);
 	usremv(&doc.us, &selleft);
