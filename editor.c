@@ -525,7 +525,7 @@ ddeleterange(Document *d, char *left, char *right)
 }
 
 const char *
-dwalkvisibleline(Document *d, const char *pos, int colc)
+dnextrenderline(Document *d, const char *pos, int colc)
 {
 	int col = 0;
 	unsigned c;
@@ -538,18 +538,33 @@ dwalkvisibleline(Document *d, const char *pos, int colc)
 	return pos;
 }
 
+const char *
+dwalkrenderline(Document *d, const char *pos, int colc, int step)
+{
+	while (step < 0) {
+		const char *p = dwalkrow(d, pos, -1);
+		const char *prev = p;
+		while (p < pos) {
+			assert(p);
+			p = dnextrenderline(d, p, colc);
+			step++;
+		}
+		pos = prev;
+	}
+	for (int i = 0; i < step && pos; i++)
+		pos = dnextrenderline(d, pos, colc);
+	return pos;
+}
+
 void
 dscroll(Document *d, int colc, int rowc)
 {
 	d->renderstart = dwalkrow(d, d->renderstart, 0);
-	const char *pos = d->renderstart;
-	for (int r = 0; r < rowc && pos; r++)
-		pos = dwalkvisibleline(d, pos, colc);
-	const char *renderend = pos;
-	if (d->curleft < d->renderstart) {
-		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
-	} else if (d->curleft >= renderend) {
-		d->renderstart = dwalkrow(d, d->curleft, -rowc/2);
+	const char *renderend = dwalkrenderline(d, d->renderstart, colc, rowc);
+	if (POSCMP(d, d->curleft, d->renderstart) < 0 ||
+			(renderend && POSCMP(d, d->curleft, renderend) >= 0)) {
+		d->renderstart = (char *)dwalkrenderline(
+			d, d->curleft, colc, -rowc/2);
 	}
 }
 
