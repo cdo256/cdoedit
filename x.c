@@ -158,6 +158,7 @@ static void xunloadfont(Font *);
 static void xunloadfonts(void);
 static void xsetenv(void);
 static void xseturgency(int);
+static void xdodraw(void);
 
 static void expose(XEvent *);
 static void visibility(XEvent *);
@@ -1419,6 +1420,22 @@ xbell(void)
 }
 
 void
+xdodraw(void)
+{
+	XEvent ev;
+	while (XPending(xw.dpy)) {
+		XNextEvent(xw.dpy, &ev);
+		if (XFilterEvent(&ev, None))
+			continue;
+		if (handler[ev.type])
+			(handler[ev.type])(&ev);
+	}
+
+	redraw();
+	XFlush(xw.dpy);
+}
+
+void
 focus(XEvent *ev)
 {
 	XFocusChangeEvent *e = &ev->xfocus;
@@ -1528,6 +1545,8 @@ run(void)
 
 	cresize(w, h);
 
+	xdodraw();
+
 	clock_gettime(CLOCK_MONOTONIC, &last);
 	lastblink = last;
 
@@ -1566,17 +1585,7 @@ run(void)
 		}
 
 		if (dodraw) {
-			while (XPending(xw.dpy)) {
-				XNextEvent(xw.dpy, &ev);
-				if (XFilterEvent(&ev, None))
-					continue;
-				if (handler[ev.type])
-					(handler[ev.type])(&ev);
-			}
-
-			redraw();
-			XFlush(xw.dpy);
-
+			xdodraw();
 			if (xev && !FD_ISSET(xfd, &rfd))
 				xev--;
 			if (!FD_ISSET(xfd, &rfd)) {
