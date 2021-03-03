@@ -541,11 +541,11 @@ dnextrenderline(Document *d, const char *pos, int colc)
 const char *
 dwalkrenderline(Document *d, const char *pos, int colc, int step)
 {
-	while (step < 0) {
+	while (step < 0 && POSCMP(d, d->bufstart, pos) < 0) {
 		const char *p = dwalkrow(d, pos, -1);
 		const char *prev = p;
-		while (p < pos) {
-			assert(p);
+		/* can be null if the file doesn't end with a newline char */
+		while (p && POSCMP(d, p, pos) < 0) {
 			p = dnextrenderline(d, p, colc);
 			step++;
 		}
