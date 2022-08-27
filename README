@@ -2,13 +2,13 @@ cdoedit - a really simple graphical text editor
 
 Overview
 --------
-cdoedit is a simple text file editor for X for my personal use. It comes with default keybindings that will
+cdoedit is a simple text file editor for X for my (cdo256's) personal use. It comes with default keybindings that will
 be most familiar to those who grew up with Windows. Ctrl+C is copy, Ctrl+V is paste, arrow keys to move the
 cursor, Ctrl+Arrows to move by word/paragraph, hold down shift when you move and it selects. All the rest of
 this is in the configuration file, config.h. If you edit this file, make sure to rebuild (sudo make install)
 to get the changes, since the config file is compiled in to the executable. I haven't tested this on any
 other platform so this could corrupt files you try to edit, pick up files from the wrong directory or
-otherwise misbehave so keep a keen eye on it and be sure you backup anything before you (cdo)edit it.
+otherwise misbehave so keep a keen eye on it and be sure you back up the original file before you save.
 
 
 Requirements
